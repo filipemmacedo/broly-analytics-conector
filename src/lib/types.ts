@@ -1,6 +1,5 @@
 export type SourceId = "bigquery" | "powerbi";
-export type ConnectionStatus = "disconnected" | "connected" | "demo" | "error";
-export type QueryLanguage = "sql" | "dax" | "system";
+export type ConnectionStatus = "disconnected" | "connected" | "error";
 
 export interface ColumnMetadata {
   name: string;
@@ -78,7 +77,7 @@ export interface PowerBISelection {
 
 export interface BigQueryConnection {
   status: ConnectionStatus;
-  mode: "live" | "demo" | null;
+  mode: "live" | null;
   selected: BigQuerySelection;
   metadata: BigQueryMetadata;
   access?: EncryptedTokenSet;
@@ -90,7 +89,7 @@ export interface BigQueryConnection {
 
 export interface PowerBIConnection {
   status: ConnectionStatus;
-  mode: "live" | "demo" | null;
+  mode: "live" | null;
   selected: PowerBISelection;
   metadata: PowerBIMetadata;
   access?: EncryptedTokenSet;
@@ -100,27 +99,12 @@ export interface PowerBIConnection {
   lastSyncedAt?: string;
 }
 
-export interface EvidencePayload {
-  source: SourceId;
-  queryLanguage: QueryLanguage;
-  queryText: string;
-  context: string[];
-  filters: string[];
-  resultPreview: Record<string, string | number>[];
-  report?: {
-    id: string;
-    name: string;
-    embedUrl?: string;
-  };
-}
-
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
   createdAt: string;
   source?: SourceId;
-  evidence?: EvidencePayload;
   status?: "complete" | "error";
 }
 
@@ -151,14 +135,10 @@ export interface PlannedExecution {
   clarification?: string;
   question: string;
   queryText: string;
-  queryLanguage: QueryLanguage;
-  context: string[];
-  filters: string[];
   intent: string;
 }
 
 export interface ExecutionResult {
   answer: string;
   preview: Record<string, string | number>[];
-  report?: EvidencePayload["report"];
 }

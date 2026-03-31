@@ -166,36 +166,21 @@ export function runDemoPlan(plan: PlannedExecution): ExecutionResult {
   if (normalized.includes("revenue") || normalized.includes("sales")) {
     return {
       answer: "Power BI reports 126,900 EUR from the Executive KPI Model for the selected demo range.",
-      preview: [{ metric: "Revenue", value: 126900, currency: "EUR" }],
-      report: {
-        id: "report-executive-overview",
-        name: "Executive Overview",
-        embedUrl: "https://app.powerbi.com/reportEmbed?reportId=report-executive-overview"
-      }
+      preview: [{ metric: "Revenue", value: 126900, currency: "EUR" }]
     };
   }
 
   if (normalized.includes("users") || normalized.includes("sessions")) {
     return {
-      answer: "Power BI shows 18,320 users in the selected demo model.",
-      preview: [{ metric: "Users", value: 18320 }],
-      report: {
-        id: "report-executive-overview",
-        name: "Executive Overview",
-        embedUrl: "https://app.powerbi.com/reportEmbed?reportId=report-executive-overview"
-      }
+      answer: "Power BI shows 18,320 users in the selected demo dataset.",
+      preview: [{ metric: "Users", value: 18320 }]
     };
   }
 
   if (normalized.includes("report") || normalized.includes("dashboard")) {
     return {
       answer: "The active Power BI workspace contains the Executive Overview report.",
-      preview: [{ report: "Executive Overview", dataset: "Executive KPI Model" }],
-      report: {
-        id: "report-executive-overview",
-        name: "Executive Overview",
-        embedUrl: "https://app.powerbi.com/reportEmbed?reportId=report-executive-overview"
-      }
+      preview: [{ report: "Executive Overview", dataset: "Executive KPI Model" }]
     };
   }
 
@@ -206,11 +191,6 @@ export function runDemoPlan(plan: PlannedExecution): ExecutionResult {
       { supported: "revenue" },
       { supported: "users" },
       { supported: "report inventory" }
-    ],
-    report: {
-      id: "report-executive-overview",
-      name: "Executive Overview",
-      embedUrl: "https://app.powerbi.com/reportEmbed?reportId=report-executive-overview"
-    }
+    ]
   };
 }

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { decryptTokenSet, encryptTokenSet } from "@/lib/crypto";
 import { appEnv, getRedirectUri, hasPowerBIOAuthConfig } from "@/lib/env";
-import { buildDemoPowerBIConnection, runDemoPlan } from "@/lib/demo-data";
+import { createEmptyPowerBIConnection } from "@/lib/store";
 import type {
   ExecutionResult,
   PlannedExecution,
@@ -120,9 +120,16 @@ function createLiveConnection(tokenSet: TokenSet, metadata: Awaited<ReturnType<t
   };
 }
 
-export function connectPowerBIDemo(session: SessionState) {
-  session.connections.powerbi = buildDemoPowerBIConnection();
-  session.activeSource = session.activeSource ?? "powerbi";
+export function markPowerBIConnectionUnavailable(session: SessionState, message: string) {
+  session.connections.powerbi = createEmptyPowerBIConnection({
+    status: "error",
+    error: message
+  });
+
+  if (session.activeSource === "powerbi") {
+    session.activeSource = null;
+  }
+
   return session;
 }
 
@@ -173,8 +180,8 @@ export async function completePowerBIOAuth(session: SessionState, params: URLSea
 }
 
 export async function runPowerBIExecution(connection: PowerBIConnection, plan: PlannedExecution): Promise<ExecutionResult> {
-  if (connection.mode !== "live") {
-    return runDemoPlan(plan);
+  if (connection.status !== "connected" || connection.mode !== "live") {
+    throw new Error("Connect Power BI before asking questions.");
   }
 
   if (plan.intent === "report_inventory") {
@@ -183,8 +190,7 @@ export async function runPowerBIExecution(connection: PowerBIConnection, plan: P
       connection.metadata.workspaces[0];
     return {
       answer: `Power BI workspace ${workspace?.name ?? "selected workspace"} is active.`,
-      preview: (workspace?.reports ?? []).map((report) => ({ report: report.name })),
-      report: workspace?.reports[0]
+      preview: (workspace?.reports ?? []).map((report) => ({ report: report.name }))
     };
   }
 
@@ -210,17 +216,12 @@ export async function runPowerBIExecution(connection: PowerBIConnection, plan: P
   });
 
   const preview = payload.results?.[0]?.tables?.[0]?.rows ?? [];
-  const workspace =
-    connection.metadata.workspaces.find((item) => item.id === connection.selected.workspaceId) ??
-    connection.metadata.workspaces[0];
-  const report = workspace?.reports.find((item) => item.id === connection.selected.reportId) ?? workspace?.reports[0];
 
   return {
     answer:
       preview.length > 0
         ? "Power BI returned a live dataset query result."
         : "Power BI ran the query successfully but returned no rows.",
-    preview,
-    report
+    preview
   };
 }

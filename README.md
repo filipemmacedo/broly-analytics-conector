@@ -1,6 +1,6 @@
 # Broly Analytics Agent
 
-Broly is a Next.js proof of concept for connecting BigQuery and Power BI to a chat-first analytics experience. Users can connect each source, pick active assets, ask analytics questions, and inspect the evidence behind every answer.
+Broly is a Next.js proof of concept for connecting BigQuery and Power BI to a chat-first analytics experience. Users can connect each source, pick active assets, and ask analytics questions from a single workspace.
 
 ## What is implemented
 
@@ -10,11 +10,10 @@ Broly is a Next.js proof of concept for connecting BigQuery and Power BI to a ch
 - BigQuery connector with delegated OAuth routes, metadata discovery, read-only query guardrails, and demo mode
 - Power BI connector with delegated OAuth routes, metadata discovery, dataset querying, and demo mode
 - Chat orchestration that routes questions to one source at a time
-- Evidence panel showing source labels, execution context, and generated SQL or DAX
 
 ## Supported question types
 
-The MVP question planner is intentionally narrow. It works best for revenue or sales summaries, orders or users summaries, top country style questions, and inventory questions such as available tables, datasets, workspaces, reports, or semantic models.
+The MVP question planner is intentionally narrow. It works best for revenue or sales summaries, orders or users summaries, top country style questions, and inventory questions such as available tables, datasets, workspaces, or reports.
 
 When the question is ambiguous and both sources are connected, the app asks the user to choose the source instead of guessing.
 

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { buildPowerBIAuthUrl, connectPowerBIDemo } from "@/lib/connectors/powerbi";
+import { buildPowerBIAuthUrl, markPowerBIConnectionUnavailable } from "@/lib/connectors/powerbi";
 import { ensureSession } from "@/lib/session";
 import { mutateSession } from "@/lib/store";
 
@@ -10,7 +10,9 @@ export async function GET(request: Request) {
   const authUrl = buildPowerBIAuthUrl(origin, session);
 
   if (!authUrl) {
-    await mutateSession(sessionId, (current) => connectPowerBIDemo(current));
+    await mutateSession(sessionId, (current) =>
+      markPowerBIConnectionUnavailable(current, "Power BI OAuth is not configured yet.")
+    );
     return NextResponse.redirect(new URL("/", request.url));
   }
 

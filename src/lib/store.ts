@@ -4,6 +4,7 @@ import path from "node:path";
 
 import type {
   BigQueryConnection,
+  ChatMessage,
   PowerBIConnection,
   PublicSessionState,
   SessionState
@@ -13,21 +14,74 @@ const dataDir = path.join(process.cwd(), "data");
 const stateFile = path.join(dataDir, "state.json");
 let writeQueue = Promise.resolve();
 
-function emptyBigQueryConnection(): BigQueryConnection {
+export function createEmptyBigQueryConnection(
+  overrides: Partial<BigQueryConnection> = {}
+): BigQueryConnection {
   return {
     status: "disconnected",
     mode: null,
     selected: {},
-    metadata: { projects: [] }
+    metadata: { projects: [] },
+    error: undefined,
+    connectedAt: undefined,
+    lastSyncedAt: undefined,
+    ...overrides
   };
 }
 
-function emptyPowerBIConnection(): PowerBIConnection {
+export function createEmptyPowerBIConnection(
+  overrides: Partial<PowerBIConnection> = {}
+): PowerBIConnection {
   return {
     status: "disconnected",
     mode: null,
     selected: {},
-    metadata: { workspaces: [] }
+    metadata: { workspaces: [] },
+    error: undefined,
+    connectedAt: undefined,
+    lastSyncedAt: undefined,
+    ...overrides
+  };
+}
+
+function sanitizeChatMessage(message: ChatMessage): ChatMessage {
+  return {
+    id: message.id,
+    role: message.role,
+    content: message.content,
+    createdAt: message.createdAt,
+    source: message.source,
+    status: message.status
+  };
+}
+
+function normalizeSession(session: SessionState): SessionState {
+  let activeSource = session.activeSource;
+  let bigquery = session.connections.bigquery;
+  let powerbi = session.connections.powerbi;
+
+  if (bigquery.status === "demo" || bigquery.mode === "demo") {
+    bigquery = createEmptyBigQueryConnection();
+    if (activeSource === "bigquery") {
+      activeSource = null;
+    }
+  }
+
+  if (powerbi.status === "demo" || powerbi.mode === "demo") {
+    powerbi = createEmptyPowerBIConnection();
+    if (activeSource === "powerbi") {
+      activeSource = null;
+    }
+  }
+
+  return {
+    ...session,
+    activeSource,
+    chat: session.chat.map((message) => sanitizeChatMessage(message)),
+    connections: {
+      bigquery,
+      powerbi
+    }
   };
 }
 
@@ -38,8 +92,8 @@ function createSession(sessionId: string): SessionState {
     activeSource: null,
     chat: [],
     connections: {
-      bigquery: emptyBigQueryConnection(),
-      powerbi: emptyPowerBIConnection()
+      bigquery: createEmptyBigQueryConnection(),
+      powerbi: createEmptyPowerBIConnection()
     }
   };
 }
@@ -73,7 +127,10 @@ export async function getOrCreateSession(sessionId?: string) {
   const existing = store.sessions[resolvedId];
 
   if (existing) {
-    return { session: existing, sessionId: resolvedId, created: false };
+    const session = normalizeSession(existing);
+    store.sessions[resolvedId] = session;
+    await writeStore(store);
+    return { session, sessionId: resolvedId, created: false };
   }
 
   const session = createSession(resolvedId);
@@ -84,9 +141,9 @@ export async function getOrCreateSession(sessionId?: string) {
 
 export async function saveSession(session: SessionState) {
   const store = await readStore();
-  store.sessions[session.id] = session;
+  store.sessions[session.id] = normalizeSession(session);
   await writeStore(store);
-  return session;
+  return store.sessions[session.id];
 }
 
 export async function mutateSession(
@@ -94,8 +151,8 @@ export async function mutateSession(
   updater: (session: SessionState) => SessionState | Promise<SessionState>
 ) {
   const store = await readStore();
-  const current = store.sessions[sessionId] ?? createSession(sessionId);
-  const updated = await updater(current);
+  const current = normalizeSession(store.sessions[sessionId] ?? createSession(sessionId));
+  const updated = normalizeSession(await updater(current));
   store.sessions[sessionId] = updated;
   await writeStore(store);
   return updated;
@@ -106,7 +163,14 @@ export function toPublicSessionState(session: SessionState): PublicSessionState 
     id: session.id,
     createdAt: session.createdAt,
     activeSource: session.activeSource,
-    chat: session.chat,
+    chat: session.chat.map((message) => ({
+      id: message.id,
+      role: message.role,
+      content: message.content,
+      createdAt: message.createdAt,
+      source: message.source,
+      status: message.status
+    })),
     connections: {
       bigquery: {
         status: session.connections.bigquery.status,

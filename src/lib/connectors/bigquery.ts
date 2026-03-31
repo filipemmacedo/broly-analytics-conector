@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { decryptTokenSet, encryptTokenSet } from "@/lib/crypto";
 import { appEnv, getRedirectUri, hasBigQueryOAuthConfig } from "@/lib/env";
-import { buildDemoBigQueryConnection, runDemoPlan } from "@/lib/demo-data";
+import { createEmptyBigQueryConnection } from "@/lib/store";
 import type {
   BigQueryConnection,
   BigQueryDataset,
@@ -120,9 +120,16 @@ function createLiveConnection(tokenSet: TokenSet, metadata: Awaited<ReturnType<t
   };
 }
 
-export function connectBigQueryDemo(session: SessionState) {
-  session.connections.bigquery = buildDemoBigQueryConnection();
-  session.activeSource = session.activeSource ?? "bigquery";
+export function markBigQueryConnectionUnavailable(session: SessionState, message: string) {
+  session.connections.bigquery = createEmptyBigQueryConnection({
+    status: "error",
+    error: message
+  });
+
+  if (session.activeSource === "bigquery") {
+    session.activeSource = null;
+  }
+
   return session;
 }
 
@@ -172,8 +179,8 @@ export async function completeBigQueryOAuth(session: SessionState, params: URLSe
 }
 
 export async function runBigQueryExecution(connection: BigQueryConnection, plan: PlannedExecution): Promise<ExecutionResult> {
-  if (connection.mode !== "live") {
-    return runDemoPlan(plan);
+  if (connection.status !== "connected" || connection.mode !== "live") {
+    throw new Error("Connect BigQuery before asking questions.");
   }
 
   if (!isSafeReadOnlyQuery(plan.queryText)) {

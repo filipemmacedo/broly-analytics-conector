@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 
 import { ensureSession } from "@/lib/session";
-import { mutateSession, saveSession, toPublicSessionState } from "@/lib/store";
+import {
+  createEmptyBigQueryConnection,
+  createEmptyPowerBIConnection,
+  mutateSession,
+  saveSession,
+  toPublicSessionState
+} from "@/lib/store";
 import type { SourceId } from "@/lib/types";
 
 export async function GET() {
@@ -33,24 +39,14 @@ export async function PATCH(request: Request) {
     }
 
     if (body.disconnectSource === "bigquery") {
-      session.connections.bigquery = {
-        status: "disconnected",
-        mode: null,
-        selected: {},
-        metadata: { projects: [] }
-      };
+      session.connections.bigquery = createEmptyBigQueryConnection();
       if (session.activeSource === "bigquery") {
         session.activeSource = null;
       }
     }
 
     if (body.disconnectSource === "powerbi") {
-      session.connections.powerbi = {
-        status: "disconnected",
-        mode: null,
-        selected: {},
-        metadata: { workspaces: [] }
-      };
+      session.connections.powerbi = createEmptyPowerBIConnection();
       if (session.activeSource === "powerbi") {
         session.activeSource = null;
       }

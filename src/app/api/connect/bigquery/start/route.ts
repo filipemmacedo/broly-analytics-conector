@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { buildBigQueryAuthUrl, connectBigQueryDemo } from "@/lib/connectors/bigquery";
+import { buildBigQueryAuthUrl, markBigQueryConnectionUnavailable } from "@/lib/connectors/bigquery";
 import { ensureSession } from "@/lib/session";
 import { mutateSession } from "@/lib/store";
 
@@ -10,7 +10,9 @@ export async function GET(request: Request) {
   const authUrl = buildBigQueryAuthUrl(origin, session);
 
   if (!authUrl) {
-    await mutateSession(sessionId, (current) => connectBigQueryDemo(current));
+    await mutateSession(sessionId, (current) =>
+      markBigQueryConnectionUnavailable(current, "BigQuery OAuth is not configured yet.")
+    );
     return NextResponse.redirect(new URL("/", request.url));
   }
 

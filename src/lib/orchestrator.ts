@@ -40,16 +40,7 @@ export async function handleQuestion(session: SessionState, question: string) {
       content: result.answer,
       createdAt: new Date().toISOString(),
       source: plan.source,
-      status: "complete",
-      evidence: {
-        source: plan.source,
-        queryLanguage: plan.queryLanguage,
-        queryText: plan.queryText,
-        context: plan.context,
-        filters: plan.filters,
-        resultPreview: result.preview,
-        report: result.report
-      }
+      status: "complete"
     });
   } catch (error) {
     session.chat.push({
@@ -61,15 +52,7 @@ export async function handleQuestion(session: SessionState, question: string) {
           : "The source query failed. Check the selected connection and try again.",
       createdAt: new Date().toISOString(),
       source: plan.source,
-      status: "error",
-      evidence: {
-        source: plan.source,
-        queryLanguage: plan.queryLanguage,
-        queryText: plan.queryText,
-        context: plan.context,
-        filters: plan.filters,
-        resultPreview: []
-      }
+      status: "error"
     });
   }
 
