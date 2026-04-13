@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, Manrope } from "next/font/google";
 
 import "@/app/globals.css";
+import { IntegrationProvider } from "@/context/IntegrationContext";
 
 const manrope = Manrope({
   subsets: ["latin"],
@@ -25,7 +26,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${manrope.variable} ${inter.variable}`}>{children}</body>
+      <body className={`${manrope.variable} ${inter.variable}`} suppressHydrationWarning>
+        <IntegrationProvider>{children}</IntegrationProvider>
+      </body>
     </html>
   );
 }
