@@ -10,6 +10,7 @@ function toList(value?: string): string[] {
 export const appEnv = {
   appUrl: process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
   sessionSecret: process.env.SESSION_SECRET ?? DEFAULT_SESSION_SECRET,
+  dataEncryptionKey: process.env.DATA_ENCRYPTION_KEY ?? DEFAULT_SESSION_SECRET,
   bigQueryClientId: process.env.BIGQUERY_OAUTH_CLIENT_ID ?? "",
   bigQueryClientSecret: process.env.BIGQUERY_OAUTH_CLIENT_SECRET ?? "",
   bigQueryProjectIds: toList(process.env.BIGQUERY_PROJECT_IDS),

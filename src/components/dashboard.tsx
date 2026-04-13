@@ -1,25 +1,26 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import {
+  ArrowUp,
+  Bot,
+  BookOpen,
+  ChevronLeft,
+  ChevronRight,
+  HelpCircle,
+  Layers,
+  Loader2,
+  Settings,
+  Sparkles,
+  TrendingUp,
+  User
+} from "lucide-react";
 
 import { DataSourcesPanel } from "@/components/data-sources-panel";
+import { Topbar } from "@/components/ui/Topbar";
 import type { PublicSessionState } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-type PatchBody = {
-  activeSource?: "bigquery" | "powerbi" | null;
-  disconnectSource?: "bigquery" | "powerbi";
-  bigquerySelection?: {
-    projectId?: string;
-    datasetId?: string;
-    tableId?: string;
-  };
-  powerbiSelection?: {
-    workspaceId?: string;
-    datasetId?: string;
-    reportId?: string;
-  };
-};
 
 const templates = [
   "Weekly revenue trends",
@@ -49,8 +50,11 @@ function EmptyState({
 }) {
   return (
     <div className="empty-state">
-      <h2>No questions yet.</h2>
-      <p>Connect a source or select a template to start exploring your intelligence landscape.</p>
+      <div className="empty-icon-wrap">
+        <Sparkles size={26} strokeWidth={1.5} />
+      </div>
+      <h2>Ask anything.</h2>
+      <p>Connect a source or pick a template to start exploring your intelligence landscape.</p>
       <div className="template-row">
         {templates.map((template) => (
           <button
@@ -59,7 +63,8 @@ function EmptyState({
             onClick={() => onTemplateSelect(template)}
             type="button"
           >
-            "{template}"
+            <TrendingUp size={13} strokeWidth={2} />
+            {template}
           </button>
         ))}
       </div>
@@ -71,6 +76,7 @@ export function Dashboard() {
   const [state, setState] = useState<PublicSessionState | null>(null);
   const [question, setQuestion] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -83,15 +89,6 @@ export function Dashboard() {
       }
     });
   }, []);
-
-  async function patchState(body: PatchBody) {
-    const nextState = await readJson<PublicSessionState>("/api/state", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
-    });
-    setState(nextState);
-  }
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -118,38 +115,63 @@ export function Dashboard() {
   }
 
   if (!state) {
-    return <div className="loading-editorial">Loading Broly...</div>;
+    return (
+      <div className="loading-editorial">
+        <Loader2 size={20} strokeWidth={1.5} className="loading-spin" />
+        Loading workspace
+      </div>
+    );
   }
 
   return (
     <div className="editorial-app">
-      <header className="topbar">
-        <div className="brand-block">
-          <div className="brand-mark">Broly</div>
+      <Topbar>
+        <a className="topbar-icon" href="/settings/integrations" aria-label="Settings">
+          <Settings size={16} strokeWidth={1.75} />
+        </a>
+        <div className="topbar-divider" />
+        <div className="avatar-chip" aria-label="AI Agent">
+          <Bot size={16} strokeWidth={1.75} />
         </div>
+      </Topbar>
 
-        <div className="topbar-actions">
-          <div className="avatar-chip">AI</div>
-        </div>
-      </header>
-
-      <div className="workspace-grid">
+      <div className={cn("workspace-grid", !sidebarOpen && "sidebar-collapsed")}>
         <aside className="workspace-rail left-rail">
           <div className="rail-header">
-            <div className="section-label">Data Sources</div>
+            <div className="section-label">
+              <Layers size={11} strokeWidth={2.5} />
+              {sidebarOpen ? "Data Sources" : null}
+            </div>
+            <button
+              aria-label={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+              className="rail-toggle"
+              onClick={() => setSidebarOpen((v) => !v)}
+              type="button"
+            >
+              {sidebarOpen
+                ? <ChevronLeft size={14} strokeWidth={2} />
+                : <ChevronRight size={14} strokeWidth={2} />}
+            </button>
           </div>
 
-          <div className="source-rail-body">
-            <DataSourcesPanel
-              onPatchState={(body) => patchState(body)}
-              state={state}
-            />
-          </div>
+          {sidebarOpen ? (
+            <div className="source-rail-body">
+              <DataSourcesPanel />
+            </div>
+          ) : null}
 
-          <div className="rail-footer">
-            <a href="/">Documentation</a>
-            <a href="/">Support</a>
-          </div>
+          {sidebarOpen ? (
+            <div className="rail-footer">
+              <a href="/">
+                <BookOpen size={12} strokeWidth={2} />
+                Documentation
+              </a>
+              <a href="/">
+                <HelpCircle size={12} strokeWidth={2} />
+                Support
+              </a>
+            </div>
+          ) : null}
         </aside>
 
         <main className="analysis-panel">
@@ -164,6 +186,11 @@ export function Dashboard() {
                     key={message.id}
                   >
                     <div className="editorial-stamp">
+                      <span className="stamp-icon">
+                        {message.role === "user"
+                          ? <User size={11} strokeWidth={2.5} />
+                          : <Bot size={11} strokeWidth={2.5} />}
+                      </span>
                       <span>{message.role}</span>
                       {message.source ? <span>{message.source}</span> : null}
                       <span>{formatTime(message.createdAt)}</span>
@@ -177,14 +204,18 @@ export function Dashboard() {
 
           <div className="composer-wrap">
             <form className="composer" onSubmit={onSubmit}>
-              <div className="composer-icon"></div>
+              <div className="composer-icon">
+                {isPending
+                  ? <Loader2 size={16} strokeWidth={1.75} className="loading-spin" />
+                  : <Sparkles size={16} strokeWidth={1.75} />}
+              </div>
               <textarea
                 onChange={(event) => setQuestion(event.target.value)}
                 placeholder="Ask your intelligence agent..."
                 value={question}
               />
-              <button className="composer-submit" disabled={isPending} type="submit">
-                â†‘
+              <button className="composer-submit" disabled={isPending} type="submit" aria-label="Send">
+                <ArrowUp size={16} strokeWidth={2.5} />
               </button>
             </form>
             {error ? <p className="editorial-note error">{error}</p> : null}
