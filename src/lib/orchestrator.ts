@@ -2,8 +2,31 @@ import { randomUUID } from "node:crypto";
 
 import { runBigQueryExecution } from "@/lib/connectors/bigquery";
 import { runPowerBIExecution } from "@/lib/connectors/powerbi";
+import { getIntegrationStatusSummaries } from "@/lib/integration-store";
 import { planExecution } from "@/lib/planner";
-import type { ChatMessage, SessionState } from "@/lib/types";
+import type { ChatMessage, SessionState, SourceId } from "@/lib/types";
+
+const PROVIDER_TO_SOURCE: Record<string, SourceId> = {
+  bigquery: "bigquery",
+  powerbi: "powerbi"
+};
+
+function getHealthySourceIds(): Set<SourceId> {
+  const summaries = getIntegrationStatusSummaries();
+  const healthy = new Set<SourceId>();
+  for (const s of summaries) {
+    const sourceId = PROVIDER_TO_SOURCE[s.provider];
+    if (sourceId && s.status === "configured" && (s.healthState === "healthy" || s.healthState === "unknown")) {
+      healthy.add(sourceId);
+    }
+  }
+  return healthy;
+}
+
+const PROVIDER_SETTINGS_LINKS: Record<SourceId, string> = {
+  bigquery: "/settings/integrations/bigquery",
+  powerbi: "/settings/integrations/powerbi"
+};
 
 export async function handleQuestion(session: SessionState, question: string) {
   const userMessage: ChatMessage = {
@@ -22,6 +45,24 @@ export async function handleQuestion(session: SessionState, question: string) {
       id: randomUUID(),
       role: "assistant",
       content: plan.clarification,
+      createdAt: new Date().toISOString(),
+      status: "error"
+    });
+    return session;
+  }
+
+  // Check integration health before dispatching to a source
+  const healthySources = getHealthySourceIds();
+  const legacyConnected =
+    session.connections[plan.source]?.status === "connected";
+
+  if (!legacyConnected && !healthySources.has(plan.source)) {
+    const providerName = plan.source === "powerbi" ? "Power BI" : "BigQuery";
+    const settingsLink = PROVIDER_SETTINGS_LINKS[plan.source];
+    session.chat.push({
+      id: randomUUID(),
+      role: "assistant",
+      content: `${providerName} is not connected. Set it up in Settings > Integrations to use this source. (${settingsLink})`,
       createdAt: new Date().toISOString(),
       status: "error"
     });
