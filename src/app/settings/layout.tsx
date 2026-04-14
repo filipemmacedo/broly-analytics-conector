@@ -14,6 +14,9 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
             <Link className="settings-nav-link" href="/settings/integrations">
               Integrations
             </Link>
+            <Link className="settings-nav-link" href="/settings/llm">
+              LLM Provider
+            </Link>
           </nav>
         </aside>
         <main className="settings-content">{children}</main>

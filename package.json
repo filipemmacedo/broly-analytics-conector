@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@radix-ui/react-accordion": "^1.2.12",
+    "google-auth-library": "^10.6.2",
     "lucide-react": "^1.7.0",
     "next": "latest",
     "react": "latest",

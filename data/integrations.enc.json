@@ -1,0 +1,24 @@
+[
+  {
+    "id": "c1051544-b071-4cf5-a427-8f6b198bfc22",
+    "provider": "google-analytics",
+    "displayName": "GA4",
+    "authType": "oauth2",
+    "authConfig": {
+      "authType": "oauth2",
+      "accessToken": {
+        "iv": "xTm4vWoXoiGZg/ZN",
+        "tag": "sJwcQlNSZ4CSK2FWluyv7g==",
+        "content": "uVqpNa1VZXvjiOxm4qyrYLsMPhxb6BKpc+dNcH7O9LxGPBA="
+      }
+    },
+    "providerFields": {
+      "propertyId": "properties/516611632"
+    },
+    "status": "error",
+    "healthState": "unreachable",
+    "lastCheckedAt": "2026-04-14T15:38:09.297Z",
+    "createdAt": "2026-04-14T15:15:14.572Z",
+    "updatedAt": "2026-04-14T15:38:18.993Z"
+  }
+]

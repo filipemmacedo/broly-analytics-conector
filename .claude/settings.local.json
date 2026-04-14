@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(openspec status:*)",
+      "Bash(openspec instructions:*)",
+      "Bash(npm install:*)"
+    ]
+  }
+}
