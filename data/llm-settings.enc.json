@@ -2,9 +2,9 @@
   "provider": "openai",
   "model": "gpt-4o",
   "encryptedApiKey": {
-    "iv": "iROCtK6rEgR/c8gG",
-    "tag": "Z3rqly+T20IKoHg9rnRQoQ==",
-    "content": "yW/kwL2AxHVbs1+36rJQELfVEa7OcNEoc4oAls7ALFGpgkatpPUxmEklWUw1/amIIUnN3U/3flJays6YSoQd7rRPBZ6UKm6LD7Jg5nY4fs3JwRRfDf3ESzJ+xfnyG64CjTgGlDUU9YkV+HuIR2OpzWJDbVUMf3UmZnG8iJacxxel5PF2VExVwuAp3HcipShp9dwSGsz86in229eyDhUMulngUn0="
+    "iv": "YoHxwD4xr7z920pe",
+    "tag": "ss5RlOKWdHBLfmTwTn83rA==",
+    "content": "/80v"
   },
-  "configuredAt": "2026-04-14T15:13:45.075Z"
+  "configuredAt": "2026-04-14T21:41:03.656Z"
 }

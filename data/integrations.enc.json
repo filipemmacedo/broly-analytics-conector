@@ -1,24 +1,37 @@
 [
   {
-    "id": "c1051544-b071-4cf5-a427-8f6b198bfc22",
+    "id": "85f5163e-8521-4c2e-a047-cf825128ec12",
     "provider": "google-analytics",
     "displayName": "GA4",
-    "authType": "oauth2",
+    "authType": "oauth2-code-flow",
     "authConfig": {
-      "authType": "oauth2",
+      "authType": "oauth2-code-flow",
+      "clientId": "441744838828-k5q9re423c97kq6upgp8s9dh8iblad5o.apps.googleusercontent.com",
+      "clientSecret": {
+        "iv": "/mQYKxDDhwpRalpc",
+        "tag": "EuT5vEPFkhKA+AH3Xhg/zw==",
+        "content": "lVfVJdfhsceiudgfWIwanoTj2EGqPkfwX4TR5Myjj9c/KEM="
+      },
       "accessToken": {
-        "iv": "xTm4vWoXoiGZg/ZN",
-        "tag": "sJwcQlNSZ4CSK2FWluyv7g==",
-        "content": "uVqpNa1VZXvjiOxm4qyrYLsMPhxb6BKpc+dNcH7O9LxGPBA="
-      }
+        "iv": "Yt9ICoqD4daok1o6",
+        "tag": "7EgsJPTEt2yRos97uEJfcg==",
+        "content": "IdzFJiZg/B0CoE2NqoZFPOE31ohjWmA30meIzTlF88nup9aOsiHy5Sp/zf3LIrCBnjpsTvKmKLa1r7OLpJsrenz4d7CvFi1TEb9Zxa5G9qDnIKt/gn8Z+Te+0ByIR8/TYr1FBOCZdqsb75HGMKqbNl8MDDKvysaZrGQMND2oM/KyfGOtDJeIzB+ICFMLtPGLEGa1QjZkaEKLsOPRzMnWaxECQpYentAzstawDyTsNpzUOXPPks7rzr+GleAijee/bM0GFpFSuFJbtrQXYV/MxvaJPJ4gaVdm8YYdsznvXtzWjTLjc/qNIJYattbDwyx6dX0dRQZbcYQ4btbUsA=="
+      },
+      "refreshToken": {
+        "iv": "I4WGi6PjzcmPgPnf",
+        "tag": "ntdF173thCYfIFzRbyYxyg==",
+        "content": "pFJ7NdT9Bkmz9WyKX3Wg4G/gkUmoPinxwWNAfWNS1msE9ciwrgiDBramMT0SpSp60fwKgAXFNcejsteG5MTpJloj3o+FUBnUYPE2JKEmnBRnHGCkV5BMZSWLCXvA2bYt5TKHZLK3eQ=="
+      },
+      "expiresAt": 1776205944421,
+      "scope": "https://www.googleapis.com/auth/analytics.readonly"
     },
     "providerFields": {
       "propertyId": "properties/516611632"
     },
-    "status": "error",
-    "healthState": "unreachable",
-    "lastCheckedAt": "2026-04-14T15:38:09.297Z",
-    "createdAt": "2026-04-14T15:15:14.572Z",
-    "updatedAt": "2026-04-14T15:38:18.993Z"
+    "status": "configured",
+    "healthState": "healthy",
+    "lastCheckedAt": "2026-04-14T21:35:00.396Z",
+    "createdAt": "2026-04-14T21:31:59.302Z",
+    "updatedAt": "2026-04-14T21:40:06.969Z"
   }
 ]
