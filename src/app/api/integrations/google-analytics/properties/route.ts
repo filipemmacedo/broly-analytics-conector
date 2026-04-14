@@ -21,6 +21,14 @@ export async function GET() {
       properties = await listGA4Properties(ga4.authConfig.serviceAccountJson);
     } else if (ga4.authConfig.authType === "oauth2") {
       properties = await listGA4PropertiesWithToken(ga4.authConfig.accessToken);
+    } else if (ga4.authConfig.authType === "oauth2-code-flow") {
+      if (!ga4.authConfig.accessToken) {
+        return NextResponse.json(
+          { error: "GA4 OAuth flow not completed — click Connect with Google first" },
+          { status: 400 }
+        );
+      }
+      properties = await listGA4PropertiesWithToken(ga4.authConfig.accessToken);
     } else {
       return NextResponse.json(
         { error: "GA4 property listing requires service-account or OAuth2 credentials" },

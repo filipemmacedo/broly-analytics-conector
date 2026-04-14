@@ -91,31 +91,46 @@ function GoogleAnalyticsFields({
   errors: FormErrors;
   onChange: (key: string, value: string) => void;
 }) {
+  const credType = values.credentialType ?? "oauth2-code-flow";
+
   return (
     <>
       <label className="form-field">
         <span>Credential type</span>
         <select
           onChange={(e) => onChange("credentialType", e.target.value)}
-          value={values.credentialType ?? "oauth2"}
+          value={credType}
         >
-          <option value="oauth2">OAuth access token</option>
+          <option value="oauth2-code-flow">Google OAuth 2.0 (recommended)</option>
           <option value="service-account">Service account JSON</option>
         </select>
       </label>
 
-      {(values.credentialType ?? "oauth2") === "oauth2" ? (
-        <label className="form-field">
-          <span>Access Token</span>
-          <input
-            className={errors.accessToken ? "error" : ""}
-            onChange={(e) => onChange("accessToken", e.target.value)}
-            placeholder={values.accessToken === MASKED_SENTINEL ? MASKED_SENTINEL : "ya29.xxxxxxxx"}
-            type="password"
-            value={values.accessToken ?? ""}
-          />
-          {errors.accessToken ? <span className="field-error">{errors.accessToken}</span> : null}
-        </label>
+      {credType === "oauth2-code-flow" ? (
+        <>
+          <label className="form-field">
+            <span>Client ID</span>
+            <input
+              className={errors.clientId ? "error" : ""}
+              onChange={(e) => onChange("clientId", e.target.value)}
+              placeholder="441744xxx.apps.googleusercontent.com"
+              type="text"
+              value={values.clientId ?? ""}
+            />
+            {errors.clientId ? <span className="field-error">{errors.clientId}</span> : null}
+          </label>
+          <label className="form-field">
+            <span>Client Secret</span>
+            <input
+              className={errors.clientSecret ? "error" : ""}
+              onChange={(e) => onChange("clientSecret", e.target.value)}
+              placeholder={values.clientSecret === MASKED_SENTINEL ? MASKED_SENTINEL : "GOCSPX-..."}
+              type="password"
+              value={values.clientSecret ?? ""}
+            />
+            {errors.clientSecret ? <span className="field-error">{errors.clientSecret}</span> : null}
+          </label>
+        </>
       ) : (
         <label className="form-field">
           <span>Service Account JSON</span>
@@ -232,11 +247,11 @@ function buildAuthConfig(provider: IntegrationProvider, values: Record<string, s
   }
 
   if (provider === "google-analytics") {
-    const credType = values.credentialType ?? "oauth2";
-    if (credType === "oauth2") {
-      return { authType: "oauth2", accessToken: values.accessToken ?? "" };
+    const credType = values.credentialType ?? "oauth2-code-flow";
+    if (credType === "service-account") {
+      return { authType: "service-account", serviceAccountJson: values.serviceAccountJson ?? "" };
     }
-    return { authType: "service-account", serviceAccountJson: values.serviceAccountJson ?? "" };
+    return { authType: "oauth2-code-flow", clientId: values.clientId ?? "", clientSecret: values.clientSecret ?? "" };
   }
 
   if (provider === "bigquery") {
@@ -290,9 +305,12 @@ function validate(provider: IntegrationProvider, displayName: string, values: Re
   }
 
   if (provider === "google-analytics") {
-    const credType = values.credentialType ?? "oauth2";
-    if (credType === "oauth2" && (!values.accessToken?.trim() || values.accessToken === MASKED_SENTINEL))
-      errors.accessToken = "Access token is required";
+    const credType = values.credentialType ?? "oauth2-code-flow";
+    if (credType === "oauth2-code-flow") {
+      if (!values.clientId?.trim()) errors.clientId = "Client ID is required";
+      if (!values.clientSecret?.trim() || values.clientSecret === MASKED_SENTINEL)
+        errors.clientSecret = "Client Secret is required";
+    }
     if (credType === "service-account" && (!values.serviceAccountJson?.trim() || values.serviceAccountJson === MASKED_SENTINEL))
       errors.serviceAccountJson = "Service account JSON is required";
   }
@@ -332,6 +350,10 @@ function seedValues(provider: IntegrationProvider, existing: PublicIntegration |
   if (ac.authType === "service-account") values.serviceAccountJson = MASKED_SENTINEL;
   if (ac.authType === "token-endpoint") {
     values.token = MASKED_SENTINEL;
+    values.clientSecret = MASKED_SENTINEL;
+  }
+  if (ac.authType === "oauth2-code-flow") {
+    values.clientId = ac.clientId ?? "";
     values.clientSecret = MASKED_SENTINEL;
   }
 
