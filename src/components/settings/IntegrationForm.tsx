@@ -94,18 +94,6 @@ function GoogleAnalyticsFields({
   return (
     <>
       <label className="form-field">
-        <span>GA4 Property ID</span>
-        <input
-          className={errors.propertyId ? "error" : ""}
-          onChange={(e) => onChange("propertyId", e.target.value)}
-          placeholder="properties/123456789"
-          type="text"
-          value={values.propertyId ?? ""}
-        />
-        {errors.propertyId ? <span className="field-error">{errors.propertyId}</span> : null}
-      </label>
-
-      <label className="form-field">
         <span>Credential type</span>
         <select
           onChange={(e) => onChange("credentialType", e.target.value)}
@@ -275,6 +263,7 @@ function buildProviderFields(provider: IntegrationProvider, values: Record<strin
     };
   }
   if (provider === "google-analytics") {
+    // propertyId is managed via GA4PropertySelector after credential save
     return { propertyId: values.propertyId ?? "" };
   }
   if (provider === "bigquery") {
@@ -301,7 +290,6 @@ function validate(provider: IntegrationProvider, displayName: string, values: Re
   }
 
   if (provider === "google-analytics") {
-    if (!values.propertyId?.trim()) errors.propertyId = "Property ID is required";
     const credType = values.credentialType ?? "oauth2";
     if (credType === "oauth2" && (!values.accessToken?.trim() || values.accessToken === MASKED_SENTINEL))
       errors.accessToken = "Access token is required";

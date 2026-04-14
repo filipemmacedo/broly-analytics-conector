@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 
+import { GA4PropertySelector } from "@/components/settings/GA4PropertySelector";
 import { IntegrationForm } from "@/components/settings/IntegrationForm";
 import { ConnectionStatusBadge } from "@/components/ui/ConnectionStatusBadge";
-import type { AuthConfig, IntegrationProvider, PublicIntegration } from "@/types/integration";
+import type { AuthConfig, GoogleAnalyticsFields, IntegrationProvider, PublicIntegration } from "@/types/integration";
 
 const PROVIDER_LABELS: Record<IntegrationProvider, string> = {
   powerbi: "Power BI",
@@ -134,6 +135,13 @@ export function IntegrationCard({ provider, integration, onRefresh }: Props) {
           No connection configured. Set up your credentials to connect this source.
         </p>
       )}
+
+      {provider === "google-analytics" && integration ? (
+        <GA4PropertySelector
+          currentPropertyId={(integration.providerFields as GoogleAnalyticsFields).propertyId || null}
+          onSelected={onRefresh}
+        />
+      ) : null}
 
       {testMessage ? (
         <p className={`integration-test-result ${testState}`}>{testMessage}</p>
