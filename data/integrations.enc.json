@@ -8,21 +8,21 @@
       "authType": "oauth2-code-flow",
       "clientId": "441744838828-k5q9re423c97kq6upgp8s9dh8iblad5o.apps.googleusercontent.com",
       "clientSecret": {
-        "iv": "/mQYKxDDhwpRalpc",
-        "tag": "EuT5vEPFkhKA+AH3Xhg/zw==",
-        "content": "lVfVJdfhsceiudgfWIwanoTj2EGqPkfwX4TR5Myjj9c/KEM="
+        "iv": "zPU+eyA4uVz2EfDZ",
+        "tag": "9Gb9jh0e6FoBrjOW0rkUsw==",
+        "content": "Ex+HeqjLxoxt69aJzaXchhwKd1Yn5wNf+WyaDapntLdIV24="
       },
       "accessToken": {
-        "iv": "Yt9ICoqD4daok1o6",
-        "tag": "7EgsJPTEt2yRos97uEJfcg==",
-        "content": "IdzFJiZg/B0CoE2NqoZFPOE31ohjWmA30meIzTlF88nup9aOsiHy5Sp/zf3LIrCBnjpsTvKmKLa1r7OLpJsrenz4d7CvFi1TEb9Zxa5G9qDnIKt/gn8Z+Te+0ByIR8/TYr1FBOCZdqsb75HGMKqbNl8MDDKvysaZrGQMND2oM/KyfGOtDJeIzB+ICFMLtPGLEGa1QjZkaEKLsOPRzMnWaxECQpYentAzstawDyTsNpzUOXPPks7rzr+GleAijee/bM0GFpFSuFJbtrQXYV/MxvaJPJ4gaVdm8YYdsznvXtzWjTLjc/qNIJYattbDwyx6dX0dRQZbcYQ4btbUsA=="
+        "iv": "Vmc+AWW821oG/OUZ",
+        "tag": "SJbDiI8nJvCxopAc9OreZA==",
+        "content": "ZcWpdhmVkVVhFcegnyEUTaiaRcWUaVaIOsn4D/TYa2YD11cLqMbzpcatVsntxKrflgLAT17ieNr32nt5nhlKKC+q9CqZAgbmNWAiST9veP0VKCOmFd0y7h3mkScNJiurjIGemoYFWBBfdEIC0hENJ7TFaumxVauFONr0q1fOBLlRAgSR1wrEfNFDkeMBMJSpMORnHJZJ4+xp7xNXkxieUrTXDG+zYlN4h96SXIjqUrWaouvxBy059C0VmuA2lwMj7DlXjn+RZzBRmlyjOx0gEJ5hWxbczDgRi4kLYfiiwzvrzW+bzJeGu3/dWt+hHl8I4onmQ46UFZItUTlCkQ=="
       },
       "refreshToken": {
-        "iv": "I4WGi6PjzcmPgPnf",
-        "tag": "ntdF173thCYfIFzRbyYxyg==",
-        "content": "pFJ7NdT9Bkmz9WyKX3Wg4G/gkUmoPinxwWNAfWNS1msE9ciwrgiDBramMT0SpSp60fwKgAXFNcejsteG5MTpJloj3o+FUBnUYPE2JKEmnBRnHGCkV5BMZSWLCXvA2bYt5TKHZLK3eQ=="
+        "iv": "CF1ywJRqjjkTSOAC",
+        "tag": "0FSE8jSwzpQD1n9Et2HZrA==",
+        "content": "Vk8SO8fjUiYEBmq6l805d3eDBM3W18rnWSf8paWY7V8d24XHEk9y8muN+z02g9LU9btu5Q/hDptQ/EC/52IehV8Q0iK/h7Z+ZLoR2j7wa2CY3Z9u+DdobTmdqcA1hXjhF3liq10+LQ=="
       },
-      "expiresAt": 1776205944421,
+      "expiresAt": 1776242665177,
       "scope": "https://www.googleapis.com/auth/analytics.readonly"
     },
     "providerFields": {
@@ -30,8 +30,8 @@
     },
     "status": "configured",
     "healthState": "healthy",
-    "lastCheckedAt": "2026-04-14T21:35:00.396Z",
+    "lastCheckedAt": "2026-04-15T07:44:29.218Z",
     "createdAt": "2026-04-14T21:31:59.302Z",
-    "updatedAt": "2026-04-14T21:40:06.969Z"
+    "updatedAt": "2026-04-15T07:44:29.598Z"
   }
 ]

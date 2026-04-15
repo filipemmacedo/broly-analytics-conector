@@ -3,18 +3,21 @@ import { randomUUID } from "node:crypto";
 import { runBigQueryExecution } from "@/lib/connectors/bigquery";
 import { runPowerBIExecution } from "@/lib/connectors/powerbi";
 import { getIntegrationStatusSummaries } from "@/lib/integration-store";
+import { runGA4AgentTurn } from "@/lib/llm-planner";
 import { planExecution } from "@/lib/planner";
 import type { ChatMessage, SessionState, SourceId } from "@/lib/types";
 import type { LLMProvider } from "@/types/llm";
 
 export interface ChatContext {
   ga4PropertyId?: string | null;
+  ga4AccessToken?: string | null;
   llmConfig?: { provider: LLMProvider; model: string; apiKey: string } | null;
 }
 
 const PROVIDER_TO_SOURCE: Record<string, SourceId> = {
   bigquery: "bigquery",
-  powerbi: "powerbi"
+  powerbi: "powerbi",
+  "google-analytics": "ga4"
 };
 
 function getHealthySourceIds(): Set<SourceId> {
@@ -31,13 +34,35 @@ function getHealthySourceIds(): Set<SourceId> {
 
 const PROVIDER_SETTINGS_LINKS: Record<SourceId, string> = {
   bigquery: "/settings/integrations/bigquery",
-  powerbi: "/settings/integrations/powerbi"
+  powerbi: "/settings/integrations/powerbi",
+  ga4: "/settings/integrations/google-analytics"
 };
 
+const PROVIDER_DISPLAY_NAMES: Record<SourceId, string> = {
+  bigquery: "BigQuery",
+  powerbi: "Power BI",
+  ga4: "Google Analytics"
+};
+
+function pushAssistantMessage(
+  session: SessionState,
+  content: string,
+  source?: SourceId,
+  status: "complete" | "error" = "complete"
+): void {
+  session.chat.push({
+    id: randomUUID(),
+    role: "assistant",
+    content,
+    createdAt: new Date().toISOString(),
+    source,
+    status
+  });
+}
+
 export async function handleQuestion(session: SessionState, question: string, context?: ChatContext) {
-  // context.ga4PropertyId and context.llmConfig are available for GA4 queries and LLM-powered planning.
-  // The rule-based planner is used as fallback when llmConfig is null.
-  void context; // will be consumed by LLM planner in a future change
+  const { ga4PropertyId, ga4AccessToken, llmConfig } = context ?? {};
+
   const userMessage: ChatMessage = {
     id: randomUUID(),
     role: "user",
@@ -45,36 +70,78 @@ export async function handleQuestion(session: SessionState, question: string, co
     createdAt: new Date().toISOString(),
     status: "complete"
   };
-
   session.chat.push(userMessage);
 
-  const plan = planExecution(question, session);
-  if (plan.clarification) {
-    session.chat.push({
-      id: randomUUID(),
-      role: "assistant",
-      content: plan.clarification,
-      createdAt: new Date().toISOString(),
-      status: "error"
-    });
+  // ─── GA4 path (LLM-powered analytics agent) ───────────────────────────────
+
+  const healthySources = getHealthySourceIds();
+
+  if (healthySources.has("ga4") || ga4PropertyId) {
+    if (!llmConfig) {
+      pushAssistantMessage(
+        session,
+        "An LLM must be configured to query Google Analytics. Go to Settings > LLM to set up a provider.",
+        "ga4",
+        "error"
+      );
+      return session;
+    }
+
+    if (!ga4PropertyId) {
+      pushAssistantMessage(
+        session,
+        "No GA4 property selected. Go to Settings > Integrations > Google Analytics to select a property.",
+        "ga4",
+        "error"
+      );
+      return session;
+    }
+
+    if (!ga4AccessToken) {
+      pushAssistantMessage(
+        session,
+        "Google Analytics is not connected. Set it up in Settings > Integrations to use this source. (/settings/integrations/google-analytics)",
+        "ga4",
+        "error"
+      );
+      return session;
+    }
+
+    try {
+      const answer = await runGA4AgentTurn(llmConfig, ga4AccessToken, ga4PropertyId, question);
+      pushAssistantMessage(session, answer, "ga4", "complete");
+    } catch (error) {
+      pushAssistantMessage(
+        session,
+        error instanceof Error ? error.message : "The GA4 query failed. Check your connection and try again.",
+        "ga4",
+        "error"
+      );
+    }
+
     return session;
   }
 
-  // Check integration health before dispatching to a source
-  const healthySources = getHealthySourceIds();
+  // ─── BigQuery / Power BI path (rule-based planner) ────────────────────────
+
+  const plan = planExecution(question, session);
+  if (plan.clarification) {
+    pushAssistantMessage(session, plan.clarification, undefined, "error");
+    return session;
+  }
+
   const legacyConnected =
-    session.connections[plan.source]?.status === "connected";
+    plan.source !== "ga4" && session.connections[plan.source as "bigquery" | "powerbi"]?.status === "connected";
 
   if (!legacyConnected && !healthySources.has(plan.source)) {
-    const providerName = plan.source === "powerbi" ? "Power BI" : "BigQuery";
+    const providerName = PROVIDER_DISPLAY_NAMES[plan.source];
     const settingsLink = PROVIDER_SETTINGS_LINKS[plan.source];
-    session.chat.push({
-      id: randomUUID(),
-      role: "assistant",
-      content: `${providerName} is not connected. Set it up in Settings > Integrations to use this source. (${settingsLink})`,
-      createdAt: new Date().toISOString(),
-      status: "error"
-    });
+    pushAssistantMessage(
+      session,
+      `${providerName} is not connected. Set it up in Settings > Integrations to use this source. (${settingsLink})`,
+      plan.source,
+      "error"
+    );
     return session;
   }
 
@@ -84,26 +151,14 @@ export async function handleQuestion(session: SessionState, question: string, co
         ? await runBigQueryExecution(session.connections.bigquery, plan)
         : await runPowerBIExecution(session.connections.powerbi, plan);
 
-    session.chat.push({
-      id: randomUUID(),
-      role: "assistant",
-      content: result.answer,
-      createdAt: new Date().toISOString(),
-      source: plan.source,
-      status: "complete"
-    });
+    pushAssistantMessage(session, result.answer, plan.source, "complete");
   } catch (error) {
-    session.chat.push({
-      id: randomUUID(),
-      role: "assistant",
-      content:
-        error instanceof Error
-          ? error.message
-          : "The source query failed. Check the selected connection and try again.",
-      createdAt: new Date().toISOString(),
-      source: plan.source,
-      status: "error"
-    });
+    pushAssistantMessage(
+      session,
+      error instanceof Error ? error.message : "The source query failed. Check the selected connection and try again.",
+      plan.source,
+      "error"
+    );
   }
 
   return session;
