@@ -3,15 +3,13 @@
 import { useEffect, useState } from "react";
 
 import { IntegrationCard } from "@/components/settings/IntegrationCard";
-import { MigrationBanner } from "@/components/settings/MigrationBanner";
 import type { IntegrationProvider, PublicIntegration } from "@/types/integration";
 import { useIntegrations } from "@/context/IntegrationContext";
 
-const PROVIDERS: IntegrationProvider[] = ["powerbi", "google-analytics", "bigquery"];
+const PROVIDERS: IntegrationProvider[] = ["google-analytics"];
 
 export default function IntegrationsPage() {
   const [integrations, setIntegrations] = useState<PublicIntegration[]>([]);
-  const [showBanner, setShowBanner] = useState(true);
   const { refresh: refreshContext } = useIntegrations();
 
   async function load() {
@@ -37,8 +35,6 @@ export default function IntegrationsPage() {
         <h1>Integrations</h1>
         <p>Connect your data sources to power the analytics assistant.</p>
       </div>
-
-      {showBanner ? <MigrationBanner onDismiss={() => setShowBanner(false)} /> : null}
 
       <div className="integration-cards-list">
         {PROVIDERS.map((provider) => {

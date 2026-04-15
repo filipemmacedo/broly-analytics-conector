@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { BarChart2, Check, ChevronDown, Database, Globe } from "lucide-react";
+import { Check, ChevronDown, Globe } from "lucide-react";
 
 import { ConnectionStatusBadge } from "@/components/ui/ConnectionStatusBadge";
 import { useIntegrations } from "@/context/IntegrationContext";
@@ -111,9 +111,7 @@ const PROVIDERS: {
   label: string;
   icon: React.ReactNode;
 }[] = [
-  { provider: "powerbi", label: "Power BI", icon: <BarChart2 size={18} strokeWidth={1.75} /> },
-  { provider: "google-analytics", label: "Google Analytics", icon: <Globe size={18} strokeWidth={1.75} /> },
-  { provider: "bigquery", label: "BigQuery", icon: <Database size={18} strokeWidth={1.75} /> }
+  { provider: "google-analytics", label: "Google Analytics", icon: <Globe size={18} strokeWidth={1.75} /> }
 ];
 
 function SourceRow({

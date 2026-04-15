@@ -7,7 +7,7 @@ import { IntegrationCard } from "@/components/settings/IntegrationCard";
 import type { IntegrationProvider, PublicIntegration } from "@/types/integration";
 import { useIntegrations } from "@/context/IntegrationContext";
 
-const VALID_PROVIDERS: IntegrationProvider[] = ["powerbi", "google-analytics", "bigquery"];
+const VALID_PROVIDERS: IntegrationProvider[] = ["google-analytics"];
 
 export default function ProviderIntegrationPage({ params }: { params: Promise<{ provider: string }> }) {
   const { provider } = use(params);

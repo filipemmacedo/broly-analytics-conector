@@ -1,7 +1,13 @@
 import Link from "next/link";
-import { Zap } from "lucide-react";
+import { ChevronDown, Zap } from "lucide-react";
 
-export function Topbar({ children }: { children?: React.ReactNode }) {
+export function Topbar({
+  children,
+  title
+}: {
+  children?: React.ReactNode;
+  title?: string;
+}) {
   return (
     <header className="topbar">
       <Link className="brand-block" href="/" aria-label="Broly home">
@@ -12,6 +18,13 @@ export function Topbar({ children }: { children?: React.ReactNode }) {
       </Link>
 
       {children ? <div className="topbar-actions">{children}</div> : null}
+
+      {title ? (
+        <div className="topbar-title" title={title}>
+          <span>{title}</span>
+          <ChevronDown size={14} strokeWidth={1.75} />
+        </div>
+      ) : <div />}
     </header>
   );
 }
