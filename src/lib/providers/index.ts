@@ -4,7 +4,7 @@ import * as googleAnalytics from "@/lib/providers/google-analytics";
 import * as powerbi from "@/lib/providers/powerbi";
 
 type ProviderAdapter = {
-  testConnection: (authConfig: AuthConfig, providerFields: ProviderFields) => Promise<{ success: boolean; error?: string }>;
+  testConnection: (authConfig: AuthConfig, providerFields: ProviderFields, integrationId?: string) => Promise<{ success: boolean; error?: string }>;
 };
 
 const registry: Record<IntegrationProvider, ProviderAdapter> = {
