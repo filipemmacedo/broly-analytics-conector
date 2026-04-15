@@ -1,0 +1,35 @@
+import { Bot, User } from "lucide-react";
+
+import type { ChatMessage } from "@/lib/types";
+import { cn } from "@/lib/utils";
+
+function formatTime(value: string) {
+  return new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(new Date(value));
+}
+
+export function MessageBubble({ message }: { message: ChatMessage }) {
+  return (
+    <article
+      className={cn(
+        "message-bubble",
+        `message-bubble--${message.role}`,
+        message.status === "error" && "message-bubble--error"
+      )}
+    >
+      <div className="message-bubble__stamp">
+        <span className="stamp-icon">
+          {message.role === "user"
+            ? <User size={11} strokeWidth={2.5} />
+            : <Bot size={11} strokeWidth={2.5} />}
+        </span>
+        <span>{message.role}</span>
+        {message.source ? <span>{message.source}</span> : null}
+        <span>{formatTime(message.createdAt)}</span>
+      </div>
+      <div className="message-bubble__content">{message.content}</div>
+    </article>
+  );
+}

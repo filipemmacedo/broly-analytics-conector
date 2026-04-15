@@ -21,7 +21,7 @@ export async function POST(_request: Request, { params }: Params) {
   const testedAt = new Date().toISOString();
 
   try {
-    const result = await adapter.testConnection(integration.authConfig, integration.providerFields);
+    const result = await adapter.testConnection(integration.authConfig, integration.providerFields, integration.id);
 
     updateIntegration(id, {
       healthState: result.success ? "healthy" : "unreachable",

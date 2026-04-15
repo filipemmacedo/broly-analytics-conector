@@ -181,7 +181,12 @@ export async function runGA4Report(
   const rows = data.rows ?? [];
 
   if (rows.length === 0) {
-    return "No data found for the requested dimensions and date range.";
+    const metricNames = (data.metricHeaders ?? []).map((h) => h.name).join(", ") || "unknown metrics";
+    const dimNames = (data.dimensionHeaders ?? []).map((h) => h.name).join(", ");
+    const detail = dimNames
+      ? `Metrics: ${metricNames}. Dimensions: ${dimNames}.`
+      : `Metrics: ${metricNames}.`;
+    return `No data returned from GA4 for the requested query (${detail}). The property may have no activity in this date range, or the metric/dimension combination may not apply to this property.`;
   }
 
   return formatRowsAsMarkdownTable(dimensionHeaders, metricHeaders, rows);

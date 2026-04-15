@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowUp,
   Bot,
@@ -12,36 +12,22 @@ import {
   Loader2,
   Settings,
   Sparkles,
-  TrendingUp,
-  User
+  TrendingUp
 } from "lucide-react";
 
+import { ChatHistorySidebar } from "@/components/ChatHistorySidebar";
 import { DataSourcesPanel } from "@/components/data-sources-panel";
+import { MessageBubble } from "@/components/ui/MessageBubble";
+import { TypingIndicator } from "@/components/ui/TypingIndicator";
 import { Topbar } from "@/components/ui/Topbar";
-import type { PublicSessionState } from "@/lib/types";
+import { useChatSession } from "@/context/ChatSessionContext";
 import { cn } from "@/lib/utils";
-
 
 const templates = [
   "Weekly revenue trends",
   "User retention cohorts",
   "Marketing attribution"
 ];
-
-async function readJson<T>(input: RequestInfo, init?: RequestInit) {
-  const response = await fetch(input, init);
-  if (!response.ok) {
-    throw new Error(await response.text());
-  }
-  return (await response.json()) as T;
-}
-
-function formatTime(value: string) {
-  return new Intl.DateTimeFormat("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit"
-  }).format(new Date(value));
-}
 
 function EmptyState({
   onTemplateSelect
@@ -73,55 +59,33 @@ function EmptyState({
 }
 
 export function Dashboard() {
-  const [state, setState] = useState<PublicSessionState | null>(null);
+  const { activeSession, isTyping, sendMessage } = useChatSession();
   const [question, setQuestion] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [isPending, startTransition] = useTransition();
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Auto-scroll to latest message whenever messages or typing state changes
   useEffect(() => {
-    startTransition(async () => {
-      try {
-        const nextState = await readJson<PublicSessionState>("/api/state");
-        setState(nextState);
-      } catch (requestError) {
-        setError(requestError instanceof Error ? requestError.message : "Unable to load the workspace.");
-      }
-    });
-  }, []);
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [activeSession?.messages.length, isTyping]);
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!question.trim()) {
-      return;
-    }
-
-    setError(null);
-    const outgoing = question.trim();
+    const trimmed = question.trim();
+    if (!trimmed || isTyping) return;
     setQuestion("");
-
-    startTransition(async () => {
-      try {
-        const nextState = await readJson<PublicSessionState>("/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ question: outgoing })
-        });
-        setState(nextState);
-      } catch (requestError) {
-        setError(requestError instanceof Error ? requestError.message : "Unable to send your question.");
-      }
-    });
+    await sendMessage(trimmed);
   }
 
-  if (!state) {
-    return (
-      <div className="loading-editorial">
-        <Loader2 size={20} strokeWidth={1.5} className="loading-spin" />
-        Loading workspace
-      </div>
-    );
+  function onKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      event.currentTarget.form?.requestSubmit();
+    }
   }
+
+  const messages = activeSession?.messages ?? [];
 
   return (
     <div className="editorial-app">
@@ -155,9 +119,12 @@ export function Dashboard() {
           </div>
 
           {sidebarOpen ? (
-            <div className="source-rail-body">
-              <DataSourcesPanel />
-            </div>
+            <>
+              <div className="data-sources-section">
+                <DataSourcesPanel />
+              </div>
+              <ChatHistorySidebar />
+            </>
           ) : null}
 
           {sidebarOpen ? (
@@ -176,28 +143,18 @@ export function Dashboard() {
 
         <main className="analysis-panel">
           <div className="analysis-stage">
-            {state.chat.length === 0 ? (
-              <EmptyState onTemplateSelect={setQuestion} />
+            {messages.length === 0 && !isTyping ? (
+              <EmptyState onTemplateSelect={(t) => {
+                setQuestion(t);
+                textareaRef.current?.focus();
+              }} />
             ) : (
               <div className="editorial-chat-list">
-                {state.chat.map((message) => (
-                  <article
-                    className={cn("editorial-message", message.role, message.status === "error" && "error")}
-                    key={message.id}
-                  >
-                    <div className="editorial-stamp">
-                      <span className="stamp-icon">
-                        {message.role === "user"
-                          ? <User size={11} strokeWidth={2.5} />
-                          : <Bot size={11} strokeWidth={2.5} />}
-                      </span>
-                      <span>{message.role}</span>
-                      {message.source ? <span>{message.source}</span> : null}
-                      <span>{formatTime(message.createdAt)}</span>
-                    </div>
-                    <div>{message.content}</div>
-                  </article>
+                {messages.map((message) => (
+                  <MessageBubble key={message.id} message={message} />
                 ))}
+                {isTyping && <TypingIndicator />}
+                <div ref={bottomRef} />
               </div>
             )}
           </div>
@@ -205,20 +162,26 @@ export function Dashboard() {
           <div className="composer-wrap">
             <form className="composer" onSubmit={onSubmit}>
               <div className="composer-icon">
-                {isPending
+                {isTyping
                   ? <Loader2 size={16} strokeWidth={1.75} className="loading-spin" />
                   : <Sparkles size={16} strokeWidth={1.75} />}
               </div>
               <textarea
+                ref={textareaRef}
                 onChange={(event) => setQuestion(event.target.value)}
+                onKeyDown={onKeyDown}
                 placeholder="Ask your intelligence agent..."
                 value={question}
               />
-              <button className="composer-submit" disabled={isPending} type="submit" aria-label="Send">
+              <button
+                className="composer-submit"
+                disabled={isTyping || !question.trim()}
+                type="submit"
+                aria-label="Send"
+              >
                 <ArrowUp size={16} strokeWidth={2.5} />
               </button>
             </form>
-            {error ? <p className="editorial-note error">{error}</p> : null}
           </div>
         </main>
       </div>

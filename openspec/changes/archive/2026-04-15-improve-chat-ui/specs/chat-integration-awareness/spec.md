@@ -1,4 +1,4 @@
-## ADDED Requirements
+## MODIFIED Requirements
 
 ### Requirement: Chat layer reads integration context before dispatching queries
 The conversation/assistant layer SHALL access the current list of healthy integrations before executing a data query. When the active source is GA4 and an LLM is configured, the orchestrator SHALL dispatch to the LLM analytics agent path instead of the rule-based planner. Queries SHALL be dispatched within the context of the active chat session identified by its session id; the orchestrator SHALL use the session's message history when constructing LLM context.
@@ -39,28 +39,3 @@ When a required source is not connected, the assistant response SHALL include a 
 - **THEN** the assistant responds with a message such as: "Power BI is not connected. You can set it up in Settings > Integrations."
 - **AND** the response includes a link to `/settings/integrations/powerbi`
 - **AND** the message is stored in the active chat session
-
----
-
-### Requirement: IntegrationContext is available app-wide
-The system SHALL provide an `IntegrationContext` React context that exposes the list of integrations with their current health state to any component in the application.
-
-#### Scenario: IntegrationContext is initialized on app load
-- **WHEN** the application first loads
-- **THEN** `IntegrationContext` fetches `GET /api/integrations/status`
-- **AND** makes the result available to all child components including the sidebar and the chat handler
-
-#### Scenario: IntegrationContext updates after polling
-- **WHEN** the polling interval fires and `GET /api/integrations/status` returns updated data
-- **THEN** `IntegrationContext` updates its state
-- **AND** all consumers (sidebar, chat layer) re-render with the new integration states
-
----
-
-### Requirement: GA4 is a valid routable SourceId
-The `SourceId` type SHALL include `"ga4"` as a valid value. The orchestrator SHALL recognize GA4 integrations as a healthy source when a `google-analytics` integration is configured and a property is selected.
-
-#### Scenario: GA4 recognized as healthy source
-- **WHEN** a `google-analytics` integration with status `"configured"` and health `"healthy"` or `"unknown"` exists
-- **AND** a GA4 property ID is present
-- **THEN** the orchestrator treats `"ga4"` as a healthy source and routes accordingly
