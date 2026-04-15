@@ -59,7 +59,7 @@ const RUN_GA4_REPORT_SCHEMA = {
       },
       dateRanges: {
         type: "array",
-        description: "Date ranges. Use relative values like '7daysAgo', '30daysAgo', 'yesterday', 'today'",
+        description: "Date ranges for the report. Use absolute dates in YYYY-MM-DD format (e.g. '2025-04-01') for specific date ranges, or relative values like 'today', 'yesterday', 'NdaysAgo' (e.g. '7daysAgo', '30daysAgo') for rolling windows. Prefer absolute dates when the user mentions specific dates or months.",
         items: {
           type: "object",
           properties: {
@@ -98,6 +98,33 @@ const RUN_GA4_REPORT_SCHEMA = {
   }
 };
 
+// ─── Retry helper ─────────────────────────────────────────────────────────────
+
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit,
+  maxRetries = 3
+): Promise<Response> {
+  let lastError: Error = new Error("Request failed");
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const res = await fetch(url, init);
+    if (res.status !== 429) return res;
+
+    // Respect Retry-After header if present, otherwise use exponential backoff
+    const retryAfter = res.headers.get("Retry-After");
+    const waitMs = retryAfter
+      ? parseFloat(retryAfter) * 1000
+      : Math.min(1000 * 2 ** attempt, 16000);
+
+    lastError = new Error(`Rate limited (429). Retrying after ${Math.round(waitMs / 1000)}s…`);
+
+    if (attempt < maxRetries - 1) {
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+    }
+  }
+  throw lastError;
+}
+
 // ─── Provider-specific tool-call implementations ──────────────────────────────
 
 async function callAnthropic(
@@ -121,7 +148,7 @@ async function callAnthropic(
   };
   if (systemMsg) body.system = systemMsg.content;
 
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+  const res = await fetchWithRetry("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
       "x-api-key": config.apiKey,
@@ -165,7 +192,7 @@ async function callOpenAI(
     messages: messages.map((m) => ({ role: m.role, content: m.content }))
   };
 
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+  const res = await fetchWithRetry("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${config.apiKey}`,
@@ -225,7 +252,7 @@ async function callGemini(
     body.systemInstruction = { parts: [{ text: systemMsg.content }] };
   }
 
-  const res = await fetch(
+  const res = await fetchWithRetry(
     `https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${config.apiKey}`,
     {
       method: "POST",
@@ -275,7 +302,7 @@ async function callMistral(
     messages: messages.map((m) => ({ role: m.role, content: m.content }))
   };
 
-  const res = await fetch("https://api.mistral.ai/v1/chat/completions", {
+  const res = await fetchWithRetry("https://api.mistral.ai/v1/chat/completions", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${config.apiKey}`,
@@ -342,7 +369,7 @@ async function callLLMForSummary(config: LLMConfig, messages: Message[]): Promis
         messages: chatMessages.map((m) => ({ role: m.role, content: m.content }))
       };
       if (systemMsg) body.system = systemMsg.content;
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
+      const res = await fetchWithRetry("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
           "x-api-key": config.apiKey,
@@ -362,7 +389,7 @@ async function callLLMForSummary(config: LLMConfig, messages: Message[]): Promis
         ? "https://api.openai.com/v1/chat/completions"
         : "https://api.mistral.ai/v1/chat/completions";
       const authHeader = { Authorization: `Bearer ${config.apiKey}` };
-      const res = await fetch(endpoint, {
+      const res = await fetchWithRetry(endpoint, {
         method: "POST",
         headers: { ...authHeader, "content-type": "application/json" },
         body: JSON.stringify({
@@ -387,7 +414,7 @@ async function callLLMForSummary(config: LLMConfig, messages: Message[]): Promis
         generationConfig: { maxOutputTokens: 512 }
       };
       if (systemMsg) body.systemInstruction = { parts: [{ text: systemMsg.content }] };
-      const res = await fetch(
+      const res = await fetchWithRetry(
         `https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${config.apiKey}`,
         { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }
       );
@@ -403,14 +430,18 @@ async function callLLMForSummary(config: LLMConfig, messages: Message[]): Promis
 const MAX_ROWS_FOR_SUMMARY = 20;
 
 function buildSystemPrompt(metadataBlock: string): string {
+  const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+
   const metadataSection = metadataBlock
     ? `\n\nWhen calling runGA4Report, ONLY use metric and dimension apiNames from this list:\n\n${metadataBlock}`
     : "";
 
   return `You are an analytics assistant with access to a Google Analytics 4 property.
+Today's date is ${today}.
 
-For questions that require data (e.g. "how many sessions last week?", "top countries by revenue"):
+For questions that require data (e.g. "how many sessions last week?", "top countries by revenue", "sessions between April 1 and April 10"):
 - Use the runGA4Report tool to fetch real data from GA4
+- When the user mentions specific dates or date ranges, convert them to YYYY-MM-DD format (e.g. "April 1" → "${new Date().getFullYear()}-04-01")
 - Summarize the results in a concise, insightful natural-language response
 - Default date range is last 28 days if not specified
 

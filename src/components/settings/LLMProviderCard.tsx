@@ -30,11 +30,6 @@ export function LLMProviderCard() {
     void loadSettings();
   }, []);
 
-  // Reload models whenever provider changes
-  useEffect(() => {
-    void loadModels(provider);
-  }, [provider]);
-
   async function loadSettings() {
     try {
       const res = await fetch("/api/settings/llm");
@@ -42,9 +37,19 @@ export function LLMProviderCard() {
         const data = (await res.json()) as PublicLLMSettings | { provider: null };
         if (data.provider) {
           const settings = data as PublicLLMSettings;
+          // Load models for the saved provider first, then set all state together
+          // so there is no race between the initial models effect and this fetch.
+          const modRes = await fetch(`/api/settings/llm/models?provider=${settings.provider}`);
+          if (modRes.ok) {
+            const modData = (await modRes.json()) as { models: LLMModel[] };
+            setModels(modData.models);
+          }
           setProvider(settings.provider);
           setModel(settings.model);
           setApiKey(settings.apiKeyMasked);
+        } else {
+          // No saved config yet — load models for the default provider
+          await loadModels("anthropic");
         }
       }
     } finally {
@@ -58,20 +63,16 @@ export function LLMProviderCard() {
       if (res.ok) {
         const data = (await res.json()) as { models: LLMModel[] };
         setModels(data.models);
-        // Reset model selection only when provider changes explicitly (not on initial load)
-        setModel((prev) => {
-          const stillValid = data.models.some((m) => m.id === prev);
-          return stillValid ? prev : (data.models[0]?.id ?? "");
-        });
+        setModel(data.models[0]?.id ?? "");
       }
     } catch {
       setModels([]);
     }
   }
 
-  function handleProviderChange(p: LLMProvider) {
+  async function handleProviderChange(p: LLMProvider) {
     setProvider(p);
-    setModel(""); // will be reset by loadModels effect
+    await loadModels(p);
   }
 
   async function handleSave() {
@@ -127,7 +128,7 @@ export function LLMProviderCard() {
         <label className="form-field">
           <span>Provider</span>
           <select
-            onChange={(e) => handleProviderChange(e.target.value as LLMProvider)}
+            onChange={(e) => void handleProviderChange(e.target.value as LLMProvider)}
             value={provider}
           >
             {PROVIDERS.map((p) => (

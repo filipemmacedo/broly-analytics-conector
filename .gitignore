@@ -3,7 +3,7 @@ node_modules
 .env
 .env.local
 .env.local.example
-data/state.json
+data/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
