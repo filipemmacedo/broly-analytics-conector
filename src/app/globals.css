@@ -909,6 +909,11 @@ button {
   gap: 2px;
 }
 
+.source-status-group {
+  display: flex;
+  flex-direction: column;
+}
+
 .source-status-row {
   display: flex;
   align-items: center;
@@ -919,6 +924,123 @@ button {
   text-decoration: none;
   color: var(--on-surface);
   transition: background 0.15s;
+}
+
+.ga4-property-picker {
+  position: relative;
+  padding: 0 10px 8px 38px;
+}
+
+.ga4-picker-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--outline-variant);
+  background: var(--surface-container-lowest);
+  color: var(--on-surface);
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  text-align: left;
+}
+
+.ga4-picker-trigger:hover {
+  border-color: rgba(122, 52, 21, 0.3);
+}
+
+.ga4-picker-trigger.open {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(122, 52, 21, 0.1);
+}
+
+.ga4-picker-label {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--on-surface);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.ga4-picker-chevron {
+  flex-shrink: 0;
+  color: var(--secondary);
+  transition: transform 0.2s;
+}
+
+.ga4-picker-chevron.rotated {
+  transform: rotate(180deg);
+}
+
+.ga4-picker-dropdown {
+  position: absolute;
+  top: calc(100% - 4px);
+  left: 38px;
+  right: 10px;
+  z-index: 50;
+  background: var(--surface-container-lowest);
+  border: 1px solid var(--outline-variant);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(26, 28, 27, 0.12), 0 2px 6px rgba(26, 28, 27, 0.06);
+  overflow: hidden;
+  padding: 3px;
+}
+
+.ga4-picker-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 5px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s;
+  color: var(--on-surface);
+}
+
+.ga4-picker-option:hover {
+  background: var(--surface-container-low);
+}
+
+.ga4-picker-option.selected {
+  background: rgba(122, 52, 21, 0.07);
+  color: var(--primary);
+}
+
+.ga4-picker-option.selected svg {
+  color: var(--primary);
+  flex-shrink: 0;
+}
+
+.ga4-picker-option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.ga4-picker-option-name {
+  font-size: 11.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ga4-picker-option-account {
+  font-size: 10.5px;
+  color: var(--secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .source-status-row:hover {

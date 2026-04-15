@@ -1,6 +1,6 @@
 export type IntegrationProvider = "powerbi" | "google-analytics" | "bigquery";
 
-export type AuthType = "api-key" | "oauth2" | "service-account" | "token-endpoint";
+export type AuthType = "api-key" | "oauth2" | "service-account" | "token-endpoint" | "oauth2-code-flow";
 
 export type IntegrationStatus = "configured" | "unconfigured" | "error" | "expired";
 
@@ -31,11 +31,22 @@ export type TokenEndpointAuthConfig = {
   endpoint: string;
 };
 
+export type OAuth2CodeFlowAuthConfig = {
+  authType: "oauth2-code-flow";
+  clientId: string;
+  clientSecret: string;
+  accessToken?: string;
+  refreshToken?: string;
+  expiresAt?: number;
+  scope?: string;
+};
+
 export type AuthConfig =
   | ApiKeyAuthConfig
   | OAuth2AuthConfig
   | ServiceAccountAuthConfig
-  | TokenEndpointAuthConfig;
+  | TokenEndpointAuthConfig
+  | OAuth2CodeFlowAuthConfig;
 
 // Provider-specific extra fields stored alongside authConfig
 export type PowerBIFields = {
@@ -75,7 +86,8 @@ export type MaskedAuthConfig =
   | { authType: "api-key"; apiKey: string }
   | { authType: "oauth2"; accessToken: string; refreshToken?: string; expiresAt?: number; scope?: string }
   | { authType: "service-account"; serviceAccountJson: string }
-  | { authType: "token-endpoint"; token: string; endpoint: string };
+  | { authType: "token-endpoint"; token: string; endpoint: string }
+  | { authType: "oauth2-code-flow"; clientId: string; clientSecret: string; accessToken?: string; refreshToken?: string; expiresAt?: number; scope?: string };
 
 export interface PublicIntegration {
   id: string;

@@ -5,6 +5,12 @@ import { runPowerBIExecution } from "@/lib/connectors/powerbi";
 import { getIntegrationStatusSummaries } from "@/lib/integration-store";
 import { planExecution } from "@/lib/planner";
 import type { ChatMessage, SessionState, SourceId } from "@/lib/types";
+import type { LLMProvider } from "@/types/llm";
+
+export interface ChatContext {
+  ga4PropertyId?: string | null;
+  llmConfig?: { provider: LLMProvider; model: string; apiKey: string } | null;
+}
 
 const PROVIDER_TO_SOURCE: Record<string, SourceId> = {
   bigquery: "bigquery",
@@ -28,7 +34,10 @@ const PROVIDER_SETTINGS_LINKS: Record<SourceId, string> = {
   powerbi: "/settings/integrations/powerbi"
 };
 
-export async function handleQuestion(session: SessionState, question: string) {
+export async function handleQuestion(session: SessionState, question: string, context?: ChatContext) {
+  // context.ga4PropertyId and context.llmConfig are available for GA4 queries and LLM-powered planning.
+  // The rule-based planner is used as fallback when llmConfig is null.
+  void context; // will be consumed by LLM planner in a future change
   const userMessage: ChatMessage = {
     id: randomUUID(),
     role: "user",

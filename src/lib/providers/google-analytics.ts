@@ -7,6 +7,13 @@ async function getAccessToken(authConfig: AuthConfig): Promise<string> {
     return authConfig.accessToken;
   }
 
+  if (authConfig.authType === "oauth2-code-flow") {
+    if (!authConfig.accessToken) {
+      throw new Error("OAuth flow not completed — click Connect with Google first");
+    }
+    return authConfig.accessToken;
+  }
+
   if (authConfig.authType === "service-account") {
     // Service account JSON contains credentials needed to mint a JWT
     // For now, parse and verify the JSON is valid; full JWT minting requires
@@ -37,7 +44,7 @@ export async function testConnection(authConfig: AuthConfig, providerFields: Pro
     const token = await getAccessToken(authConfig);
 
     const response = await fetch(
-      `https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}/metadata`,
+      `https://analyticsdata.googleapis.com/v1beta/${propertyId}/metadata`,
       { headers: { Authorization: `Bearer ${token}` } }
     );
 

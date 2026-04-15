@@ -13,7 +13,8 @@ const SECRET_FIELDS: Record<string, string[]> = {
   "api-key": ["apiKey"],
   "oauth2": ["accessToken", "refreshToken"],
   "service-account": ["serviceAccountJson"],
-  "token-endpoint": ["token"]
+  "token-endpoint": ["token"],
+  "oauth2-code-flow": ["clientSecret", "accessToken", "refreshToken"]
 };
 
 // ─── Encryption ────────────────────────────────────────────────────────────

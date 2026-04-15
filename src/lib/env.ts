@@ -32,6 +32,6 @@ export function hasPowerBIOAuthConfig() {
   return Boolean(appEnv.powerBiClientId && appEnv.powerBiClientSecret);
 }
 
-export function getRedirectUri(origin: string, source: "bigquery" | "powerbi") {
+export function getRedirectUri(origin: string, source: "bigquery" | "powerbi" | "ga4") {
   return `${origin}/api/connect/${source}/callback`;
 }
