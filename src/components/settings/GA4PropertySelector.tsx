@@ -41,8 +41,12 @@ export function GA4PropertySelector({ currentPropertyId, onSelected }: Props) {
       const data = (await res.json()) as GA4Property[];
       setProperties(data);
       setLoadState("loaded");
-      if (currentPropertyId && !selected) {
+
+      // Auto-select the saved property, or if only one exists and none saved, pick it
+      if (currentPropertyId) {
         setSelected(currentPropertyId);
+      } else if (data.length === 1) {
+        void saveProperty(data[0].propertyId);
       }
     } catch {
       setErrorMessage("Could not reach the properties API");
@@ -50,10 +54,8 @@ export function GA4PropertySelector({ currentPropertyId, onSelected }: Props) {
     }
   }
 
-  async function handleSave() {
-    const propertyId = loadState === "error" ? manualId : selected;
+  async function saveProperty(propertyId: string) {
     if (!propertyId) return;
-
     setIsSaving(true);
     setSaveResult(null);
     try {
@@ -64,16 +66,19 @@ export function GA4PropertySelector({ currentPropertyId, onSelected }: Props) {
       });
 
       if (res.ok) {
+        setSelected(propertyId);
         setSaveResult("success");
         onSelected(propertyId);
+        setTimeout(() => setSaveResult(null), 3000);
       } else {
         setSaveResult("error");
+        setTimeout(() => setSaveResult(null), 4000);
       }
     } catch {
       setSaveResult("error");
+      setTimeout(() => setSaveResult(null), 4000);
     } finally {
       setIsSaving(false);
-      setTimeout(() => setSaveResult(null), 4000);
     }
   }
 
@@ -88,7 +93,8 @@ export function GA4PropertySelector({ currentPropertyId, onSelected }: Props) {
 
         {loadState === "loaded" && (
           <select
-            onChange={(e) => setSelected(e.target.value)}
+            disabled={isSaving}
+            onChange={(e) => void saveProperty(e.target.value)}
             value={selected}
           >
             <option value="">Select a property…</option>
@@ -120,16 +126,18 @@ export function GA4PropertySelector({ currentPropertyId, onSelected }: Props) {
         <p className="integration-test-result error">Failed to save property</p>
       )}
 
-      <div className="form-actions">
-        <button
-          className="btn-primary"
-          disabled={isSaving || (loadState === "loaded" && !selected) || (loadState === "error" && !manualId)}
-          onClick={handleSave}
-          type="button"
-        >
-          {isSaving ? "Saving…" : "Save property"}
-        </button>
-      </div>
+      {loadState === "error" && (
+        <div className="form-actions">
+          <button
+            className="btn-primary"
+            disabled={isSaving || !manualId}
+            onClick={() => void saveProperty(manualId)}
+            type="button"
+          >
+            {isSaving ? "Saving…" : "Save property"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

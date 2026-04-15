@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { GA4PropertySelector } from "@/components/settings/GA4PropertySelector";
 import { IntegrationForm } from "@/components/settings/IntegrationForm";
 import { ConnectionStatusBadge } from "@/components/ui/ConnectionStatusBadge";
 import type { AuthConfig, IntegrationProvider, OAuth2CodeFlowAuthConfig, PublicIntegration } from "@/types/integration";
@@ -133,11 +134,26 @@ export function IntegrationCard({ provider, integration, onRefresh }: Props) {
         <div className="integration-card-meta">
           <span className="integration-display-name">{integration.displayName}</span>
         </div>
-      ) : (
+      ) : null}
+
+      {(() => {
+        const ga4Auth = integration?.authConfig as OAuth2CodeFlowAuthConfig | undefined;
+        const hasToken = ga4Auth?.authType === "oauth2-code-flow" && Boolean(ga4Auth?.accessToken);
+        if (provider !== "google-analytics" || !hasToken) return null;
+        const currentPropertyId = (integration?.providerFields as { propertyId?: string } | undefined)?.propertyId;
+        return (
+          <GA4PropertySelector
+            currentPropertyId={currentPropertyId}
+            onSelected={onRefresh}
+          />
+        );
+      })()}
+
+      {!integration ? (
         <p className="integration-empty-state">
           No connection configured. Set up your credentials to connect this source.
         </p>
-      )}
+      ) : null}
 
       {testMessage ? (
         <p className={`integration-test-result ${testState}`}>{testMessage}</p>
