@@ -1,0 +1,10 @@
+{
+  "provider": "openai",
+  "model": "gpt-4o",
+  "encryptedApiKey": {
+    "iv": "YoHxwD4xr7z920pe",
+    "tag": "ss5RlOKWdHBLfmTwTn83rA==",
+    "content": "/80v"
+  },
+  "configuredAt": "2026-04-14T21:41:03.656Z"
+}

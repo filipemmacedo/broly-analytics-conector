@@ -12,6 +12,7 @@ const VALID_PROVIDERS: IntegrationProvider[] = ["powerbi", "google-analytics", "
 export default function ProviderIntegrationPage({ params }: { params: Promise<{ provider: string }> }) {
   const { provider } = use(params);
   const [integration, setIntegration] = useState<PublicIntegration | null>(null);
+  const [oauthBanner, setOauthBanner] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const { refresh: refreshContext } = useIntegrations();
 
   const typedProvider = VALID_PROVIDERS.includes(provider as IntegrationProvider)
@@ -29,6 +30,19 @@ export default function ProviderIntegrationPage({ params }: { params: Promise<{ 
 
   useEffect(() => {
     void load();
+
+    // Show a banner if Google redirected back with a result
+    const search = new URLSearchParams(window.location.search);
+    if (search.has("ga4_connected")) {
+      setOauthBanner({ type: "success", message: "Google Analytics connected successfully." });
+      // Remove the query param without a page reload
+      const clean = window.location.pathname;
+      window.history.replaceState({}, "", clean);
+    } else if (search.has("ga4_error")) {
+      setOauthBanner({ type: "error", message: `OAuth error: ${search.get("ga4_error") ?? "unknown"}` });
+      const clean = window.location.pathname;
+      window.history.replaceState({}, "", clean);
+    }
   }, [typedProvider]);
 
   if (!typedProvider) {
@@ -45,6 +59,12 @@ export default function ProviderIntegrationPage({ params }: { params: Promise<{ 
       <div className="settings-page-header">
         <a className="settings-back-link" href="/settings/integrations">← Integrations</a>
       </div>
+      {oauthBanner ? (
+        <div className={`oauth-banner oauth-banner-${oauthBanner.type}`}>
+          {oauthBanner.message}
+          <button className="btn-ghost" onClick={() => setOauthBanner(null)} type="button">✕</button>
+        </div>
+      ) : null}
       <IntegrationCard
         integration={integration}
         onRefresh={onRefresh}

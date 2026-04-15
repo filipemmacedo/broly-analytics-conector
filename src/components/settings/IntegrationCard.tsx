@@ -4,7 +4,7 @@ import { useState } from "react";
 
 import { IntegrationForm } from "@/components/settings/IntegrationForm";
 import { ConnectionStatusBadge } from "@/components/ui/ConnectionStatusBadge";
-import type { AuthConfig, IntegrationProvider, PublicIntegration } from "@/types/integration";
+import type { AuthConfig, IntegrationProvider, OAuth2CodeFlowAuthConfig, PublicIntegration } from "@/types/integration";
 
 const PROVIDER_LABELS: Record<IntegrationProvider, string> = {
   powerbi: "Power BI",
@@ -88,6 +88,10 @@ export function IntegrationCard({ provider, integration, onRefresh }: Props) {
     }
   }
 
+  function handleGoogleConnect() {
+    window.location.href = "/api/connect/ga4/start";
+  }
+
   if (isEditing) {
     return (
       <div className="integration-card editing">
@@ -163,11 +167,36 @@ export function IntegrationCard({ provider, integration, onRefresh }: Props) {
       ) : null}
 
       <div className="integration-card-actions">
-        <button className="btn-primary" onClick={() => setIsEditing(true)} type="button">
-          {integration ? "Edit" : "Set up"}
-        </button>
+        {provider === "google-analytics" ? (
+          (() => {
+            const ga4Auth = integration?.authConfig as OAuth2CodeFlowAuthConfig | undefined;
+            const isCodeFlow = ga4Auth?.authType === "oauth2-code-flow";
+            const hasToken = isCodeFlow && Boolean(ga4Auth?.accessToken);
+            if (!integration || !isCodeFlow) {
+              return (
+                <button className="btn-primary" onClick={() => setIsEditing(true)} type="button">
+                  Set up
+                </button>
+              );
+            }
+            return (
+              <button className="btn-primary" onClick={handleGoogleConnect} type="button">
+                {hasToken ? "Reconnect with Google" : "Connect with Google"}
+              </button>
+            );
+          })()
+        ) : (
+          <button className="btn-primary" onClick={() => setIsEditing(true)} type="button">
+            {integration ? "Edit" : "Set up"}
+          </button>
+        )}
         {integration ? (
           <>
+            {provider === "google-analytics" ? (
+              <button className="btn-secondary" onClick={() => setIsEditing(true)} type="button">
+                Edit
+              </button>
+            ) : null}
             <button
               className="btn-secondary"
               disabled={testState === "testing"}
