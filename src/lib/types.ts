@@ -112,6 +112,7 @@ export interface SessionState {
   id: string;
   createdAt: string;
   activeSource: SourceId | null;
+  /** @deprecated Use ChatSession.messages via /api/chats. Retained for orchestrator compatibility. */
   chat: ChatMessage[];
   connections: {
     bigquery: BigQueryConnection;
@@ -123,11 +124,26 @@ export interface PublicSessionState {
   id: string;
   createdAt: string;
   activeSource: SourceId | null;
-  chat: ChatMessage[];
   connections: {
     bigquery: Omit<BigQueryConnection, "access" | "oauthState">;
     powerbi: Omit<PowerBIConnection, "access" | "oauthState">;
   };
+}
+
+export interface ChatSummary {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  messageCount: number;
+}
+
+export interface ChatSession {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  messages: ChatMessage[];
 }
 
 export interface PlannedExecution {

@@ -163,14 +163,6 @@ export function toPublicSessionState(session: SessionState): PublicSessionState 
     id: session.id,
     createdAt: session.createdAt,
     activeSource: session.activeSource,
-    chat: session.chat.map((message) => ({
-      id: message.id,
-      role: message.role,
-      content: message.content,
-      createdAt: message.createdAt,
-      source: message.source,
-      status: message.status
-    })),
     connections: {
       bigquery: {
         status: session.connections.bigquery.status,
