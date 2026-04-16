@@ -1,7 +1,13 @@
+import dynamic from "next/dynamic";
 import { Bot, User } from "lucide-react";
 
 import type { ChatMessage } from "@/lib/types";
 import { cn } from "@/lib/utils";
+
+const MetricLineChart = dynamic(
+  () => import("@/components/ui/MetricLineChart").then((m) => m.MetricLineChart),
+  { ssr: false }
+);
 
 function formatTime(value: string) {
   return new Intl.DateTimeFormat("en-GB", {
@@ -25,11 +31,15 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
             ? <User size={11} strokeWidth={2.5} />
             : <Bot size={11} strokeWidth={2.5} />}
         </span>
-        <span>{message.role}</span>
-        {message.source ? <span>{message.source}</span> : null}
+        <span><span>{message.role === "assistant" ? "broly" : message.role}</span>
+</span>
+        {message.source ? <span>Tool:{message.source}</span> : null}
         <span>{formatTime(message.createdAt)}</span>
       </div>
       <div className="message-bubble__content">{message.content}</div>
+      {message.chartData?.points?.length && message.chartData.points.length > 0 && (
+        <MetricLineChart data={message.chartData} />
+      )}
     </article>
   );
 }
