@@ -1,20 +1,21 @@
 ## ADDED Requirements
 
-### Requirement: ChatMessage carries optional chart data
-The `ChatMessage` type SHALL include an optional `chartData` field typed as `ChartData` where:
+### Requirement: ChatMessage carries optional visual data (replaces chartData)
+The `ChatMessage` type SHALL include an optional `visual` field typed as `VisualData` (discriminated union). The old `chartData?: ChartData` field is removed. Chart data is now carried as `visual: { type: 'chart', data: ChartData }`.
+
+`ChartData` itself is unchanged:
 ```
 ChartData = { points: Record<string, string | number>[]; metrics: string[] }
 ```
-`points` is an array of flat objects suitable for Recharts (keyed by metric name plus `"date"`). `metrics` is an ordered list of metric `apiName` strings identifying which keys in `points` are chart series. This field SHALL be omitted (undefined) for all non-chart messages and MUST NOT affect existing message rendering.
 
-#### Scenario: Plain text message has no chartData
+#### Scenario: Plain text message has no visual
 - **WHEN** the assistant replies with a non-time-series answer
-- **THEN** `message.chartData` is undefined
+- **THEN** `message.visual` is undefined
 - **AND** `MessageBubble` renders the message as plain text as before
 
-#### Scenario: Time-series message includes chartData
+#### Scenario: Time-series message includes visual of type chart
 - **WHEN** the GA4 query returns rows with a `date` dimension and one or more numeric metrics
-- **THEN** `message.chartData` is populated with `{ points, metrics }`
+- **THEN** `message.visual` is set to `{ type: 'chart', data: { points, metrics } }`
 - **AND** `message.content` contains a brief natural-language summary (≤2 sentences)
 
 ---
@@ -92,12 +93,3 @@ The orchestrator SHALL populate `chartData` when the GA4 result rows contain a `
 - **THEN** `chartData` is NOT populated
 - **AND** the response is rendered as plain text
 
----
-
-### Requirement: Backward-compatible migration for persisted old-format chartData
-Sessions saved before the `ChartData` refactor may contain `chartData` as a plain `ChartDataPoint[]` array (`{ date, value }[]`). When loading a `ChatSession` from disk, the system SHALL transparently migrate old-format arrays to the new `ChartData` shape so previously saved charts continue to render correctly.
-
-#### Scenario: Old-format array is migrated on load
-- **WHEN** a chat session file contains `chartData: [{ date: "2024-04-15", value: 123 }]`
-- **THEN** `getChat` returns the message with `chartData: { points: [{ date: "2024-04-15", value: 123 }], metrics: ["value"] }`
-- **AND** the chart renders with a single line labelled "value"
