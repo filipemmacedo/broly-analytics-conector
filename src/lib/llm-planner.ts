@@ -3,6 +3,7 @@
 // Supports Anthropic, OpenAI, Google Gemini, and Mistral via raw fetch (no SDKs).
 
 import { formatMetadataForPrompt, getGA4Metadata, runGA4Report } from "@/lib/connectors/ga4";
+import type { ChartData } from "@/lib/types";
 import type { LLMProvider } from "@/types/llm";
 
 // ─── Shared types ─────────────────────────────────────────────────────────────
@@ -445,8 +446,115 @@ For questions that require data (e.g. "how many sessions last week?", "top count
 - Summarize the results in a concise, insightful natural-language response
 - Default date range is last 28 days if not specified
 
+METRIC NAME TRANSLATIONS — always map these common user terms to the correct GA4 apiName:
+  "pageviews" / "page views" / "views"       → screenPageViews
+  "sessions"                                  → sessions
+  "users" / "visitors" / "active users"       → activeUsers
+  "new users"                                 → newUsers
+  "bounce rate"                               → bounceRate
+  "revenue" / "purchase revenue"              → purchaseRevenue
+  "conversions" / "transactions"              → transactions
+  "engagement rate"                           → engagementRate
+  "avg session duration" / "time on site"     → averageSessionDuration
+
+MULTI-METRIC RULE — when the user asks for more than one metric, you MUST include ALL of them in the metrics array using the correct GA4 apiNames above. Never drop a metric the user explicitly requested.
+Examples:
+  - "sessions and pageviews by day"           → metrics: [{ name: "sessions" }, { name: "screenPageViews" }]
+  - "revenue and transactions last month"     → metrics: [{ name: "purchaseRevenue" }, { name: "transactions" }]
+
+CHART RENDERING RULE — whenever the user asks for a metric broken down over time, as a trend, by day, by week, or across a date range, you MUST include { "name": "date" } in the dimensions array of the runGA4Report tool call. The UI will automatically render a line chart — you do not need to narrate the individual numbers.
+Examples that require date dimension:
+  - "sessions per day last 30 days"           → metrics: [{ name: "sessions" }], dimensions: [{ name: "date" }]
+  - "sessions and pageviews by day"           → metrics: [{ name: "sessions" }, { name: "screenPageViews" }], dimensions: [{ name: "date" }]
+  - "show me traffic trend this month"        → dimensions: [{ name: "date" }]
+  - "pageviews last 5 days"                   → metrics: [{ name: "screenPageViews" }], dimensions: [{ name: "date" }]
+Examples that do NOT need date dimension:
+  - "top 5 countries by sessions"             → no date dimension
+  - "total revenue last month"                → no date dimension
+  - "bounce rate by device category"          → no date dimension
+
 For conceptual or definitional questions (e.g. "what is the difference between X and Y?", "explain metric Z", "how does GA4 calculate bounce rate?"):
 - Answer directly from your knowledge without calling any tool${metadataSection}`;
+}
+
+const MAX_CHART_POINTS = 365;
+
+export function normaliseGA4Date(raw: string): string {
+  if (raw.length === 8 && /^\d{8}$/.test(raw)) {
+    return `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
+  }
+  return raw;
+}
+
+export function extractChartData(rows: Record<string, string>[]): ChartData | undefined {
+  if (!rows.length) return undefined;
+
+  const keys = Object.keys(rows[0]);
+  if (!keys.includes("date")) return undefined;
+
+  const metrics = keys.filter((k) => k !== "date" && !isNaN(Number(rows[0][k])));
+  if (metrics.length === 0) return undefined;
+
+  const points = rows
+    .slice(0, MAX_CHART_POINTS)
+    .map((row) => {
+      const point: Record<string, string | number> = { date: normaliseGA4Date(row["date"]) };
+      for (const m of metrics) point[m] = Number(row[m]);
+      return point;
+    })
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+
+  return points.length > 0 ? { points, metrics } : undefined;
+}
+
+// Deterministic mapping from natural-language terms users write → GA4 apiNames.
+// Used to supplement the LLM's tool call when the LLM drops a metric the user
+// explicitly requested (LLMs reliably pick a "primary" metric but sometimes omit
+// secondary ones even when instructed).
+const USER_TERM_TO_GA4_METRIC: Record<string, string> = {
+  "pageview": "screenPageViews",
+  "pageviews": "screenPageViews",
+  "page view": "screenPageViews",
+  "page views": "screenPageViews",
+  "sessions": "sessions",
+  "session": "sessions",
+  "user": "activeUsers",
+  "users": "activeUsers",
+  "visitor": "activeUsers",
+  "visitors": "activeUsers",
+  "active user": "activeUsers",
+  "active users": "activeUsers",
+  "new user": "newUsers",
+  "new users": "newUsers",
+  "bounce rate": "bounceRate",
+  "revenue": "purchaseRevenue",
+  "purchase revenue": "purchaseRevenue",
+  "conversion": "transactions",
+  "conversions": "transactions",
+  "transaction": "transactions",
+  "transactions": "transactions",
+  "engagement rate": "engagementRate",
+};
+
+function supplementMetrics(
+  llmMetrics: Array<{ name: string }>,
+  question: string
+): Array<{ name: string }> {
+  const lower = question.toLowerCase();
+  const present = new Set(llmMetrics.map((m) => m.name));
+  const extra: Array<{ name: string }> = [];
+  for (const [term, apiName] of Object.entries(USER_TERM_TO_GA4_METRIC)) {
+    if (!present.has(apiName) && lower.includes(term)) {
+      extra.push({ name: apiName });
+      present.add(apiName); // avoid duplicates if multiple terms map to the same metric
+    }
+  }
+  return extra.length > 0 ? [...llmMetrics, ...extra] : llmMetrics;
+}
+
+export interface GA4AgentTurnResult {
+  summary: string;
+  rows?: Record<string, string>[];
 }
 
 export async function runGA4AgentTurn(
@@ -454,7 +562,7 @@ export async function runGA4AgentTurn(
   ga4AccessToken: string,
   propertyId: string,
   question: string
-): Promise<string> {
+): Promise<GA4AgentTurnResult> {
   // Fetch property metadata (cached after first call) to ground the LLM in real metric/dimension names
   const metadata = await getGA4Metadata(ga4AccessToken, propertyId);
   const metadataBlock = formatMetadataForPrompt(metadata);
@@ -470,7 +578,7 @@ export async function runGA4AgentTurn(
 
   // Step 2: If LLM chose to answer directly (no tool call), return as-is
   if (!result.toolCall) {
-    return result.text ?? "I couldn't generate an analytics response for that question.";
+    return { summary: result.text ?? "I couldn't generate an analytics response for that question." };
   }
 
   // Step 3: Execute the GA4 tool call
@@ -482,10 +590,19 @@ export async function runGA4AgentTurn(
     limit?: number;
   };
 
-  // Enforce row cap
-  const limit = Math.min(params.limit ?? 10, MAX_ROWS_FOR_SUMMARY);
+  // Supplement: add any metrics the user explicitly mentioned that the LLM dropped
+  params.metrics = supplementMetrics(params.metrics, question);
 
-  const rawTable = await runGA4Report(ga4AccessToken, propertyId, {
+  // For date-dimension queries the limit drives chart resolution.
+  // Capped at 20 days during the testing phase to keep GA4 API usage and LLM
+  // context size predictable while the chart feature is being validated.
+  // Raise MAX_CHART_DAYS once the feature is stable and pagination is in place.
+  const MAX_CHART_DAYS = 20;
+  const hasDateDim = params.dimensions?.some((d) => d.name === "date") ?? false;
+  const maxRows = hasDateDim ? MAX_CHART_DAYS : MAX_ROWS_FOR_SUMMARY;
+  const limit = Math.min(params.limit ?? (hasDateDim ? MAX_CHART_DAYS : 10), maxRows);
+
+  const { table: rawTable, rows } = await runGA4Report(ga4AccessToken, propertyId, {
     metrics: params.metrics,
     dimensions: params.dimensions,
     dateRanges: params.dateRanges ?? [{ startDate: "28daysAgo", endDate: "today" }],
@@ -493,7 +610,15 @@ export async function runGA4AgentTurn(
     limit
   });
 
-  // Step 4: Send rows back to LLM for natural-language summarization
+  // Step 4: Detect whether this result warrants a chart.
+  const chartData = extractChartData(rows);
+  const isChartQuery = chartData !== undefined;
+
+  // Step 5: Send rows back to LLM for natural-language summarization
+  const summarisationInstruction = isChartQuery
+    ? "A line chart will be rendered automatically for this data. Respond with only a 1-2 sentence insight about the trend — do not list or narrate individual data points."
+    : "Based on the data above, provide a concise, human-readable analytics insight that directly answers my question.";
+
   const summaryMessages: Message[] = [
     { role: "system", content: systemPrompt },
     { role: "user", content: question },
@@ -503,11 +628,10 @@ export async function runGA4AgentTurn(
     },
     {
       role: "user",
-      content:
-        "Based on the data above, provide a concise, human-readable analytics insight that directly answers my question."
+      content: summarisationInstruction
     }
   ];
 
   const summary = await callLLMForSummary(llmConfig, summaryMessages);
-  return summary || rawTable;
+  return { summary: summary || rawTable, rows };
 }

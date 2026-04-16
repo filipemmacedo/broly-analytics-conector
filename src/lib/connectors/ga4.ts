@@ -158,11 +158,16 @@ function sanitizeOrderBys(orderBys?: GA4OrderBy[]): GA4OrderBy[] | undefined {
   return sanitized.length ? sanitized : undefined;
 }
 
+export interface GA4ReportResult {
+  table: string;
+  rows: Record<string, string>[];
+}
+
 export async function runGA4Report(
   accessToken: string,
   propertyId: string,
   params: GA4ReportParams
-): Promise<string> {
+): Promise<GA4ReportResult> {
   const url = `https://analyticsdata.googleapis.com/v1beta/${propertyId}:runReport`;
 
   const body: Record<string, unknown> = {
@@ -202,16 +207,33 @@ export async function runGA4Report(
 
   const dimensionHeaders = data.dimensionHeaders ?? [];
   const metricHeaders = data.metricHeaders ?? [];
-  const rows = data.rows ?? [];
+  const apiRows = data.rows ?? [];
 
-  if (rows.length === 0) {
+  if (apiRows.length === 0) {
     const metricNames = (data.metricHeaders ?? []).map((h) => h.name).join(", ") || "unknown metrics";
     const dimNames = (data.dimensionHeaders ?? []).map((h) => h.name).join(", ");
     const detail = dimNames
       ? `Metrics: ${metricNames}. Dimensions: ${dimNames}.`
       : `Metrics: ${metricNames}.`;
-    return `No data returned from GA4 for the requested query (${detail}). The property may have no activity in this date range, or the metric/dimension combination may not apply to this property.`;
+    return {
+      table: `No data returned from GA4 for the requested query (${detail}). The property may have no activity in this date range, or the metric/dimension combination may not apply to this property.`,
+      rows: []
+    };
   }
 
-  return formatRowsAsMarkdownTable(dimensionHeaders, metricHeaders, rows);
+  const rows: Record<string, string>[] = apiRows.map((row) => {
+    const record: Record<string, string> = {};
+    dimensionHeaders.forEach((h, i) => {
+      record[h.name] = row.dimensionValues?.[i]?.value ?? "";
+    });
+    metricHeaders.forEach((h, i) => {
+      record[h.name] = row.metricValues?.[i]?.value ?? "";
+    });
+    return record;
+  });
+
+  return {
+    table: formatRowsAsMarkdownTable(dimensionHeaders, metricHeaders, apiRows),
+    rows
+  };
 }

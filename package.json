@@ -14,7 +14,8 @@
     "lucide-react": "^1.7.0",
     "next": "latest",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "recharts": "^3.8.1"
   },
   "devDependencies": {
     "@types/node": "latest",
