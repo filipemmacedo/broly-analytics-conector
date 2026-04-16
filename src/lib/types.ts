@@ -99,6 +99,13 @@ export interface PowerBIConnection {
   lastSyncedAt?: string;
 }
 
+export interface ChartData {
+  /** One entry per date — each entry has `date` plus one key per metric. */
+  points: Record<string, string | number>[];
+  /** Ordered list of metric names, used to render one Line per metric. */
+  metrics: string[];
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
@@ -106,6 +113,7 @@ export interface ChatMessage {
   createdAt: string;
   source?: SourceId;
   status?: "complete" | "error";
+  chartData?: ChartData;
 }
 
 export interface SessionState {

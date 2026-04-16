@@ -175,6 +175,30 @@ Return to the dashboard at `http://localhost:3000` and ask questions such as:
 
 The assistant fetches GA4 metadata for the selected property, asks the configured LLM to choose valid GA4 metrics and dimensions, runs the report, and summarizes the result in chat.
 
+## Inline Line Charts
+
+When you ask for one or more metrics broken down by day, Broly renders an interactive line chart directly inside the chat bubble instead of a text table.
+
+![alt text](image.png)
+
+**How it works:**
+
+- The LLM is instructed to include the `date` dimension whenever the question asks for a trend, daily breakdown, or time-series comparison.
+- The GA4 Data API rows are parsed into chart data on the server — the LLM only writes a short 1–2 sentence trend summary, keeping output tokens minimal.
+- Single-metric queries produce one line. Multi-metric queries (e.g. "sessions and pageviews by day") produce one coloured line per metric with a legend.
+- Charts are rendered client-side using [Recharts](https://recharts.org) via a dynamic import, keeping the server bundle lean.
+
+**Example prompts that trigger a chart:**
+
+- `Sessions by day for the last 2 weeks`
+- `Sessions and pageviews by day`
+- `Show me the traffic trend this month`
+- `Daily active users for the last 20 days`
+
+**Current testing-phase limits:**
+
+Date-dimension queries are capped at **20 days** of data. This limit exists to keep GA4 API usage and LLM context size predictable while the chart feature is being validated. The cap is defined by `MAX_CHART_DAYS` in `src/lib/llm-planner.ts` and can be raised once the feature is stable and pagination is in place.
+
 ## GA4 Troubleshooting
 
 ### OAuth error: `not_configured`
