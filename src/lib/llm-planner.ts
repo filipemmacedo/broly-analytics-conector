@@ -3,7 +3,7 @@
 // Supports Anthropic, OpenAI, Google Gemini, and Mistral via raw fetch (no SDKs).
 
 import { formatMetadataForPrompt, getGA4Metadata, runGA4Report } from "@/lib/connectors/ga4";
-import type { ChartData } from "@/lib/types";
+import type { ChartData, TableData, VisualData } from "@/lib/types";
 import type { LLMProvider } from "@/types/llm";
 
 // ─── Shared types ─────────────────────────────────────────────────────────────
@@ -468,10 +468,16 @@ Examples that require date dimension:
   - "sessions and pageviews by day"           → metrics: [{ name: "sessions" }, { name: "screenPageViews" }], dimensions: [{ name: "date" }]
   - "show me traffic trend this month"        → dimensions: [{ name: "date" }]
   - "pageviews last 5 days"                   → metrics: [{ name: "screenPageViews" }], dimensions: [{ name: "date" }]
-Examples that do NOT need date dimension:
-  - "top 5 countries by sessions"             → no date dimension
-  - "total revenue last month"                → no date dimension
-  - "bounce rate by device category"          → no date dimension
+
+TABLE RENDERING RULE — whenever the user asks for a breakdown by a non-time dimension (e.g. by country, device, channel, page, source), include that dimension in the dimensions array and do NOT include the date dimension. The UI will automatically render a data table — you do not need to narrate individual rows, only provide a 1-2 sentence insight.
+Examples that require a non-date dimension (renders as table):
+  - "top 5 countries by sessions"             → metrics: [{ name: "sessions" }], dimensions: [{ name: "country" }]
+  - "sessions by device category"             → metrics: [{ name: "sessions" }], dimensions: [{ name: "deviceCategory" }]
+  - "pageviews by channel"                    → metrics: [{ name: "screenPageViews" }], dimensions: [{ name: "sessionDefaultChannelGroup" }]
+  - "bounce rate by page"                     → metrics: [{ name: "bounceRate" }], dimensions: [{ name: "pagePath" }]
+Distinguishing chart from table:
+  - "sessions by day"     → date dimension → line chart
+  - "sessions by country" → country dimension → data table
 
 For conceptual or definitional questions (e.g. "what is the difference between X and Y?", "explain metric Z", "how does GA4 calculate bounce rate?"):
 - Answer directly from your knowledge without calling any tool${metadataSection}`;
@@ -484,6 +490,26 @@ export function normaliseGA4Date(raw: string): string {
     return `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
   }
   return raw;
+}
+
+export function extractTableData(rows: Record<string, string>[]): TableData | undefined {
+  if (!rows.length) return undefined;
+
+  const keys = Object.keys(rows[0]);
+  const dimensions = keys.filter((k) => k !== "date" && isNaN(Number(rows[0][k])));
+  if (dimensions.length === 0) return undefined;
+
+  const metrics = keys.filter((k) => !isNaN(Number(rows[0][k])));
+  const columns = [...dimensions, ...metrics];
+
+  const tableRows = rows.map((row) => {
+    const out: Record<string, string | number> = {};
+    for (const d of dimensions) out[d] = row[d];
+    for (const m of metrics) out[m] = Number(row[m]);
+    return out;
+  });
+
+  return { columns, rows: tableRows };
 }
 
 export function extractChartData(rows: Record<string, string>[]): ChartData | undefined {
@@ -554,7 +580,7 @@ function supplementMetrics(
 
 export interface GA4AgentTurnResult {
   summary: string;
-  rows?: Record<string, string>[];
+  visual?: VisualData;
 }
 
 export async function runGA4AgentTurn(
@@ -610,14 +636,18 @@ export async function runGA4AgentTurn(
     limit
   });
 
-  // Step 4: Detect whether this result warrants a chart.
+  // Step 4: Detect whether this result warrants a chart or table.
   const chartData = extractChartData(rows);
+  const tableData = chartData === undefined ? extractTableData(rows) : undefined;
   const isChartQuery = chartData !== undefined;
+  const isTableQuery = tableData !== undefined;
 
   // Step 5: Send rows back to LLM for natural-language summarization
   const summarisationInstruction = isChartQuery
     ? "A line chart will be rendered automatically for this data. Respond with only a 1-2 sentence insight about the trend — do not list or narrate individual data points."
-    : "Based on the data above, provide a concise, human-readable analytics insight that directly answers my question.";
+    : isTableQuery
+      ? "A data table will be rendered for this result. Respond with only a 1-2 sentence insight about the data — do not list or narrate individual rows."
+      : "Based on the data above, provide a concise, human-readable analytics insight that directly answers my question.";
 
   const summaryMessages: Message[] = [
     { role: "system", content: systemPrompt },
@@ -633,5 +663,13 @@ export async function runGA4AgentTurn(
   ];
 
   const summary = await callLLMForSummary(llmConfig, summaryMessages);
-  return { summary: summary || rawTable, rows };
+
+  // Step 6: Build visual payload
+  const visual: VisualData | undefined = chartData
+    ? { type: "chart", data: chartData }
+    : tableData
+      ? { type: "table", data: tableData }
+      : undefined;
+
+  return { summary: summary || rawTable, visual };
 }

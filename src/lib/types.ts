@@ -106,6 +106,17 @@ export interface ChartData {
   metrics: string[];
 }
 
+export interface TableData {
+  /** Ordered column names — dimensions first, metrics last. */
+  columns: string[];
+  /** One entry per row; metric values are coerced to numbers. */
+  rows: Record<string, string | number>[];
+}
+
+export type VisualData =
+  | { type: "chart"; data: ChartData }
+  | { type: "table"; data: TableData };
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
@@ -113,7 +124,7 @@ export interface ChatMessage {
   createdAt: string;
   source?: SourceId;
   status?: "complete" | "error";
-  chartData?: ChartData;
+  visual?: VisualData;
 }
 
 export interface SessionState {

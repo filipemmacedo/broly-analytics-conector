@@ -9,6 +9,11 @@ const MetricLineChart = dynamic(
   { ssr: false }
 );
 
+const MetricTable = dynamic(
+  () => import("@/components/ui/MetricTable").then((m) => m.MetricTable),
+  { ssr: false }
+);
+
 function formatTime(value: string) {
   return new Intl.DateTimeFormat("en-GB", {
     hour: "2-digit",
@@ -37,8 +42,11 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
         <span>{formatTime(message.createdAt)}</span>
       </div>
       <div className="message-bubble__content">{message.content}</div>
-      {message.chartData?.points?.length && message.chartData.points.length > 0 && (
-        <MetricLineChart data={message.chartData} />
+      {message.visual?.type === "chart" && message.visual.data.points.length > 0 && (
+        <MetricLineChart data={message.visual.data} />
+      )}
+      {message.visual?.type === "table" && message.visual.data.rows.length > 0 && (
+        <MetricTable data={message.visual.data} />
       )}
     </article>
   );

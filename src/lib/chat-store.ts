@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import type { ChatMessage, ChatSession, ChatSummary, ChartData } from "@/lib/types";
+import type { ChartData, ChatMessage, ChatSession, ChatSummary } from "@/lib/types";
 
 function chatsDir() {
   return join(process.cwd(), "data", "chats");
@@ -102,10 +102,17 @@ export function getChat(id: string): ChatSession | null {
   if (!existsSync(path)) return null;
   try {
     const session = JSON.parse(readFileSync(path, "utf-8")) as ChatSession;
-    // Normalise chartData on every message in case old-format data is present
-    session.messages = session.messages.map((m: ChatMessage) =>
-      m.chartData ? { ...m, chartData: migrateChartData(m.chartData) } : m
-    );
+    // Coerce legacy messages: migrate old chartData field → visual: { type: 'chart', data }
+    session.messages = session.messages.map((m: ChatMessage & { chartData?: unknown }) => {
+      if (m.chartData && !m.visual) {
+        const data = migrateChartData(m.chartData);
+        if (data) {
+          const { chartData: _, ...rest } = m;
+          return { ...rest, visual: { type: "chart" as const, data } };
+        }
+      }
+      return m;
+    });
     return session;
   } catch {
     return null;
