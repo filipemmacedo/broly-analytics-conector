@@ -135,11 +135,39 @@ function formatRowsAsMarkdownTable(
   return [headerRow, separator, ...dataRows].join("\n");
 }
 
+function sanitizeOrderBys(orderBys?: GA4OrderBy[]): GA4OrderBy[] | undefined {
+  const sanitized: GA4OrderBy[] = [];
+
+  for (const orderBy of orderBys ?? []) {
+    if (orderBy.metric?.metricName) {
+      sanitized.push({
+        metric: { metricName: orderBy.metric.metricName },
+        ...(typeof orderBy.desc === "boolean" ? { desc: orderBy.desc } : {})
+      });
+      continue;
+    }
+
+    if (orderBy.dimension?.dimensionName) {
+      sanitized.push({
+        dimension: { dimensionName: orderBy.dimension.dimensionName },
+        ...(typeof orderBy.desc === "boolean" ? { desc: orderBy.desc } : {})
+      });
+    }
+  }
+
+  return sanitized.length ? sanitized : undefined;
+}
+
+export interface GA4ReportResult {
+  table: string;
+  rows: Record<string, string>[];
+}
+
 export async function runGA4Report(
   accessToken: string,
   propertyId: string,
   params: GA4ReportParams
-): Promise<string> {
+): Promise<GA4ReportResult> {
   const url = `https://analyticsdata.googleapis.com/v1beta/${propertyId}:runReport`;
 
   const body: Record<string, unknown> = {
@@ -147,7 +175,8 @@ export async function runGA4Report(
   };
   if (params.dimensions?.length) body.dimensions = params.dimensions;
   if (params.dateRanges?.length) body.dateRanges = params.dateRanges;
-  if (params.orderBys?.length) body.orderBys = params.orderBys;
+  const orderBys = sanitizeOrderBys(params.orderBys);
+  if (orderBys?.length) body.orderBys = orderBys;
   if (params.limit) body.limit = params.limit;
   if (params.dimensionFilter) body.dimensionFilter = params.dimensionFilter;
   if (params.metricFilter) body.metricFilter = params.metricFilter;
@@ -178,16 +207,33 @@ export async function runGA4Report(
 
   const dimensionHeaders = data.dimensionHeaders ?? [];
   const metricHeaders = data.metricHeaders ?? [];
-  const rows = data.rows ?? [];
+  const apiRows = data.rows ?? [];
 
-  if (rows.length === 0) {
+  if (apiRows.length === 0) {
     const metricNames = (data.metricHeaders ?? []).map((h) => h.name).join(", ") || "unknown metrics";
     const dimNames = (data.dimensionHeaders ?? []).map((h) => h.name).join(", ");
     const detail = dimNames
       ? `Metrics: ${metricNames}. Dimensions: ${dimNames}.`
       : `Metrics: ${metricNames}.`;
-    return `No data returned from GA4 for the requested query (${detail}). The property may have no activity in this date range, or the metric/dimension combination may not apply to this property.`;
+    return {
+      table: `No data returned from GA4 for the requested query (${detail}). The property may have no activity in this date range, or the metric/dimension combination may not apply to this property.`,
+      rows: []
+    };
   }
 
-  return formatRowsAsMarkdownTable(dimensionHeaders, metricHeaders, rows);
+  const rows: Record<string, string>[] = apiRows.map((row) => {
+    const record: Record<string, string> = {};
+    dimensionHeaders.forEach((h, i) => {
+      record[h.name] = row.dimensionValues?.[i]?.value ?? "";
+    });
+    metricHeaders.forEach((h, i) => {
+      record[h.name] = row.metricValues?.[i]?.value ?? "";
+    });
+    return record;
+  });
+
+  return {
+    table: formatRowsAsMarkdownTable(dimensionHeaders, metricHeaders, apiRows),
+    rows
+  };
 }

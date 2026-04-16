@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { runBigQueryExecution } from "@/lib/connectors/bigquery";
 import { runPowerBIExecution } from "@/lib/connectors/powerbi";
 import { getIntegrationStatusSummaries } from "@/lib/integration-store";
-import { runGA4AgentTurn } from "@/lib/llm-planner";
+import { extractChartData, runGA4AgentTurn } from "@/lib/llm-planner";
 import { planExecution } from "@/lib/planner";
 import type { ChatMessage, SessionState, SourceId } from "@/lib/types";
 import type { LLMProvider } from "@/types/llm";
@@ -43,6 +43,9 @@ const PROVIDER_DISPLAY_NAMES: Record<SourceId, string> = {
   powerbi: "Power BI",
   ga4: "Google Analytics"
 };
+
+const GENERIC_GA4_QUERY_ERROR =
+  "I couldn't complete that Google Analytics query. Please try rephrasing it or check the selected GA4 property and date range.";
 
 function pushAssistantMessage(
   session: SessionState,
@@ -108,12 +111,28 @@ export async function handleQuestion(session: SessionState, question: string, co
     }
 
     try {
-      const answer = await runGA4AgentTurn(llmConfig, ga4AccessToken, ga4PropertyId, question);
-      pushAssistantMessage(session, answer, "ga4", "complete");
+      const { summary, rows } = await runGA4AgentTurn(llmConfig, ga4AccessToken, ga4PropertyId, question);
+      const chartData = rows ? extractChartData(rows) : undefined;
+      const message: ChatMessage = {
+        id: randomUUID(),
+        role: "assistant",
+        content: summary,
+        createdAt: new Date().toISOString(),
+        source: "ga4",
+        status: "complete",
+        ...(chartData ? { chartData } : {})
+      };
+      session.chat.push(message);
     } catch (error) {
+      console.error("GA4 query failed", {
+        question,
+        propertyId: ga4PropertyId,
+        message: error instanceof Error ? error.message : String(error)
+      });
+
       pushAssistantMessage(
         session,
-        error instanceof Error ? error.message : "The GA4 query failed. Check your connection and try again.",
+        GENERIC_GA4_QUERY_ERROR,
         "ga4",
         "error"
       );

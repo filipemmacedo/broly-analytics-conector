@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import type { ChatMessage, ChatSession, ChatSummary } from "@/lib/types";
+import type { ChatMessage, ChatSession, ChatSummary, ChartData } from "@/lib/types";
 
 function chatsDir() {
   return join(process.cwd(), "data", "chats");
@@ -72,11 +72,41 @@ export function createChat(title = "New Chat"): ChatSession {
   return session;
 }
 
+/**
+ * Migrate chartData from the old ChartDataPoint[] format (saved before the
+ * ChartData refactor) to the current { points, metrics } shape.
+ * Old format: [{ date: string; value: number }, ...]
+ * New format: { points: Record<string, string|number>[]; metrics: string[] }
+ */
+function migrateChartData(raw: unknown): ChartData | undefined {
+  if (!raw) return undefined;
+  // Already new format
+  if (typeof raw === "object" && !Array.isArray(raw) && "points" in (raw as object)) {
+    return raw as ChartData;
+  }
+  // Old array format
+  if (Array.isArray(raw) && raw.length > 0 && "date" in raw[0]) {
+    return {
+      points: (raw as Array<{ date: string; value: number }>).map((p) => ({
+        date: p.date,
+        value: p.value
+      })),
+      metrics: ["value"]
+    };
+  }
+  return undefined;
+}
+
 export function getChat(id: string): ChatSession | null {
   const path = sessionPath(id);
   if (!existsSync(path)) return null;
   try {
-    return JSON.parse(readFileSync(path, "utf-8")) as ChatSession;
+    const session = JSON.parse(readFileSync(path, "utf-8")) as ChatSession;
+    // Normalise chartData on every message in case old-format data is present
+    session.messages = session.messages.map((m: ChatMessage) =>
+      m.chartData ? { ...m, chartData: migrateChartData(m.chartData) } : m
+    );
+    return session;
   } catch {
     return null;
   }
