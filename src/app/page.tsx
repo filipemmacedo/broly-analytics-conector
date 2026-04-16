@@ -1,10 +1,5 @@
-import { Dashboard } from "@/components/dashboard";
-import { ChatSessionProvider } from "@/context/ChatSessionContext";
+import { ChatWorkspace } from "@/components/chat/ChatWorkspace";
 
 export default function HomePage() {
-  return (
-    <ChatSessionProvider>
-      <Dashboard />
-    </ChatSessionProvider>
-  );
+  return <ChatWorkspace mode="home" />;
 }

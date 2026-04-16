@@ -5,9 +5,8 @@ The system SHALL store each chat session as a separate JSON file under `data/cha
 
 #### Scenario: First app load with no existing sessions
 - **WHEN** the application loads and `data/chats/` contains no session files
-- **THEN** the system automatically creates a new session titled "New Chat"
-- **AND** the new session is set as the active session
-- **AND** the index is updated with the new session's summary
+- **THEN** the system does NOT automatically create a new session just because the homepage rendered
+- **AND** the session index remains empty until the user explicitly creates or starts a chat
 
 #### Scenario: Session file and index stay in sync
 - **WHEN** a message is added to a session
@@ -96,3 +95,70 @@ The system SHALL expose `POST /api/chats/[id]/messages` accepting `{ question: s
 #### Scenario: Send message to non-existent session
 - **WHEN** `POST /api/chats/<id>/messages` is called with an id that does not exist
 - **THEN** the response is `404`
+
+---
+
+### Requirement: Each chat session is accessible at a unique URL path
+The system SHALL route each chat session to `/chat/[id]` where `[id]` is the session's unique identifier. Navigating to this URL SHALL load and display that specific session.
+
+#### Scenario: Direct navigation to a valid session URL
+- **WHEN** the user navigates to `/chat/<id>` with a valid session id
+- **THEN** the chat page loads with that session as the active session
+- **AND** the full message history for that session is displayed
+
+#### Scenario: Navigation to an unknown session URL
+- **WHEN** the user navigates to `/chat/<id>` with an id that does not exist
+- **THEN** the system redirects to `/`
+- **AND** the dashboard home is displayed
+
+#### Scenario: Page refresh preserves the active session
+- **WHEN** the user is viewing `/chat/<id>` and refreshes the page
+- **THEN** the same session is re-opened and displayed
+- **AND** the full message history is restored
+
+---
+
+### Requirement: Switching sessions updates the URL
+The system SHALL update the browser URL to `/chat/[id]` whenever a concrete chat session becomes active through sidebar navigation or first-message creation from the dashboard home.
+
+#### Scenario: User opens a session from the sidebar
+- **WHEN** the user clicks a chat entry in the sidebar
+- **THEN** the URL changes to `/chat/<selected-id>` without a full page reload
+- **AND** the selected session's messages are displayed
+
+#### Scenario: User starts a new chat from the dashboard home
+- **WHEN** the user is on `/`
+- **AND** submits the first message for a new conversation
+- **THEN** a new session is created
+- **AND** the URL changes to `/chat/<new-id>`
+- **AND** the new conversation continues in that session route
+
+---
+
+### Requirement: Active session title is shown in the page header
+The system SHALL display the active session's title in the top bar of the chat page so users can identify which session they are viewing.
+
+#### Scenario: Header shows session title
+- **WHEN** a chat session is active
+- **THEN** the top bar displays the session's `title` field
+
+#### Scenario: Header shows default title for new sessions
+- **WHEN** the active session has the default title "New Chat"
+- **THEN** the top bar displays "New Chat"
+
+---
+
+### Requirement: First-message transition from home does not flash the route loader
+The system SHALL NOT display the chat route loading skeleton when the user navigates to `/chat/<id>` as a result of submitting the first message from the dashboard home, because a pending chat start is already available in sessionStorage at mount time.
+
+#### Scenario: Navigate to new chat with pending start in sessionStorage
+- **WHEN** the user submits the first message from `/`
+- **AND** the browser navigates to `/chat/<new-id>`
+- **AND** a matching pending chat start entry exists in `sessionStorage`
+- **THEN** the chat route renders the optimistic user message immediately on first paint
+- **AND** the `ChatRouteLoader` skeleton is never shown during this transition
+
+#### Scenario: Navigate directly to a chat URL with no pending start
+- **WHEN** the user navigates directly to `/chat/<id>` (e.g. by typing the URL or refreshing)
+- **AND** there is no matching pending chat start entry in `sessionStorage`
+- **THEN** the `ChatRouteLoader` skeleton is displayed until the session data is loaded
