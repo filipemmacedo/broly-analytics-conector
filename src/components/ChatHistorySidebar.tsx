@@ -17,7 +17,7 @@ function formatRelativeTime(iso: string) {
 }
 
 export function ChatHistorySidebar() {
-  const { chats, activeChatId, openChat, createChat, deleteChat } = useChatSession();
+  const { chats, activeChatId, openChat, goHome, deleteChat } = useChatSession();
 
   return (
     <div className="chat-history-section">
@@ -28,7 +28,7 @@ export function ChatHistorySidebar() {
         </span>
         <button
           className="new-chat-btn"
-          onClick={() => void createChat()}
+          onClick={goHome}
           title="New chat"
           type="button"
         >

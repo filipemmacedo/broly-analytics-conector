@@ -18,6 +18,7 @@ function GA4PropertyPicker() {
   const [properties, setProperties] = useState<GA4Property[]>([]);
   const [selected, setSelected] = useState<string>("");
   const [open, setOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -37,6 +38,8 @@ function GA4PropertyPicker() {
         }
       } catch {
         // silently ignore — sidebar should not hard-fail
+      } finally {
+        setIsLoading(false);
       }
     })();
   }, []);
@@ -51,6 +54,14 @@ function GA4PropertyPicker() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  if (isLoading) {
+    return (
+      <div className="ga4-property-picker">
+        <div className="ga4-picker-loading" aria-hidden="true">···</div>
+      </div>
+    );
+  }
 
   if (properties.length === 0) return null;
 
