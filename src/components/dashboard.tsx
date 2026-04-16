@@ -12,10 +12,12 @@ import {
   PanelLeft,
   Settings,
   Sparkles,
+  Square,
   TrendingUp
 } from "lucide-react";
 
 import { ChatHistorySidebar } from "@/components/ChatHistorySidebar";
+import { ChatRouteLoader } from "@/components/chat/ChatRouteLoader";
 import { DataSourcesPanel } from "@/components/data-sources-panel";
 import { MessageBubble } from "@/components/ui/MessageBubble";
 import { TypingIndicator } from "@/components/ui/TypingIndicator";
@@ -32,17 +34,26 @@ const templates = [
 const COMPOSER_MAX_HEIGHT_RATIO = 0.1;
 const COMPOSER_MIN_HEIGHT = 24;
 
-function resizeComposerInput(textarea: HTMLTextAreaElement) {
+function resizeComposerInput(
+  textarea: HTMLTextAreaElement,
+  composer: HTMLFormElement | null = null
+) {
   textarea.style.height = "auto";
 
+  const isEmpty = textarea.value.length === 0;
   const maxHeight = Math.max(COMPOSER_MIN_HEIGHT, window.innerHeight * COMPOSER_MAX_HEIGHT_RATIO);
+  const measuredHeight = isEmpty ? COMPOSER_MIN_HEIGHT : textarea.scrollHeight;
   const nextHeight = Math.max(
     COMPOSER_MIN_HEIGHT,
-    Math.min(textarea.scrollHeight, maxHeight)
+    Math.min(measuredHeight, maxHeight)
   );
 
   textarea.style.height = `${nextHeight}px`;
-  textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden";
+  textarea.style.overflowY = measuredHeight > maxHeight ? "auto" : "hidden";
+
+  if (composer) {
+    composer.dataset.isExpanded = !isEmpty && nextHeight > COMPOSER_MIN_HEIGHT ? "true" : "false";
+  }
 }
 
 function EmptyState({
@@ -75,42 +86,88 @@ function EmptyState({
 }
 
 export function Dashboard() {
-  const { activeSession, isTyping, sendMessage } = useChatSession();
+  const {
+    activeSession,
+    isTyping,
+    isGenerating,
+    sendMessage,
+    abortMessage,
+    isSessionLoading,
+    homeDraftVersion,
+    workspaceMode,
+    goHome
+  } = useChatSession();
   const [question, setQuestion] = useState("");
   const [hasHydrated, setHasHydrated] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const previousSessionIdRef = useRef<string | null>(null);
+  const previousMessageCountRef = useRef(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const composerInnerRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
     setHasHydrated(true);
   }, []);
 
-  // Auto-scroll to latest message whenever messages or typing state changes
+  // Snap when switching chats; only animate ongoing updates inside the same chat.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [activeSession?.messages.length, isTyping]);
+    if (!bottomRef.current) return;
+
+    const sessionId = activeSession?.id ?? null;
+    const messageCount = activeSession?.messages.length ?? 0;
+    const sessionChanged = previousSessionIdRef.current !== sessionId;
+    const messageCountIncreased = messageCount > previousMessageCountRef.current;
+    const behavior =
+      sessionChanged || (!messageCountIncreased && !isTyping) ? "auto" : "smooth";
+
+    bottomRef.current.scrollIntoView({ behavior, block: "end" });
+
+    previousSessionIdRef.current = sessionId;
+    previousMessageCountRef.current = messageCount;
+  }, [activeSession?.id, activeSession?.messages.length, isTyping]);
 
   useEffect(() => {
     if (!textareaRef.current) return;
-    resizeComposerInput(textareaRef.current);
+    resizeComposerInput(textareaRef.current, composerInnerRef.current);
   }, [question]);
 
   useEffect(() => {
     function onResize() {
       if (!textareaRef.current) return;
-      resizeComposerInput(textareaRef.current);
+      resizeComposerInput(textareaRef.current, composerInnerRef.current);
     }
 
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
+  useEffect(() => {
+    setQuestion("");
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      resizeComposerInput(textareaRef.current, composerInnerRef.current);
+    }
+    if (composerInnerRef.current) {
+      composerInnerRef.current.dataset.hasContent = "false";
+      composerInnerRef.current.dataset.isExpanded = "false";
+    }
+  }, [homeDraftVersion]);
+
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmed = question.trim();
-    if (!hasHydrated || !trimmed || isTyping) return;
+    if (!hasHydrated || !trimmed || isTyping || isSessionLoading) return;
     setQuestion("");
+    // Reset textarea height and data-has-content after clearing
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      resizeComposerInput(textareaRef.current, composerInnerRef.current);
+    }
+    if (composerInnerRef.current) {
+      composerInnerRef.current.dataset.hasContent = "false";
+      composerInnerRef.current.dataset.isExpanded = "false";
+    }
     await sendMessage(trimmed);
   }
 
@@ -122,12 +179,13 @@ export function Dashboard() {
   }
 
   const messages = activeSession?.messages ?? [];
-  const chatTitle = activeSession?.title?.trim() || "New chat";
-  const submitUnavailable = isTyping || !question.trim();
+  const chatTitle = activeSession?.title?.trim()
+    || (isSessionLoading ? "Loading chat" : workspaceMode === "home" ? "Dashboard" : "New chat");
+  const submitUnavailable = isTyping || isSessionLoading || !question.trim();
 
   return (
     <div className="editorial-app">
-      <Topbar title={chatTitle}>
+      <Topbar onBrandClick={goHome} title={chatTitle}>
         <button
           aria-label="Open data sources and settings"
           className="topbar-sidebar-trigger"
@@ -218,7 +276,9 @@ export function Dashboard() {
 
         <main className="analysis-panel">
           <div className="analysis-stage">
-            {messages.length === 0 && !isTyping ? (
+            {isSessionLoading ? (
+              <ChatRouteLoader />
+            ) : messages.length === 0 && !isTyping ? (
               <EmptyState onTemplateSelect={(t) => {
                 setQuestion(t);
                 textareaRef.current?.focus();
@@ -235,25 +295,51 @@ export function Dashboard() {
           </div>
 
           <div className="composer-wrap">
-            <form className="composer" onSubmit={onSubmit}>
+            <form
+              className="composer"
+              ref={composerInnerRef}
+              data-has-content="false"
+              data-is-expanded="false"
+              onSubmit={onSubmit}
+            >
               <textarea
+                aria-disabled={isSessionLoading ? "true" : undefined}
                 ref={textareaRef}
-                onChange={(event) => setQuestion(event.target.value)}
+                readOnly={isSessionLoading}
+                rows={1}
+                onChange={(event) => {
+                  setQuestion(event.target.value);
+                  if (composerInnerRef.current) {
+                    composerInnerRef.current.dataset.hasContent =
+                      event.target.value.length > 0 ? "true" : "false";
+                  }
+                }}
                 onKeyDown={onKeyDown}
                 placeholder="Ask your intelligence agent..."
                 value={question}
               />
-              <button
-                aria-disabled={hasHydrated && submitUnavailable ? "true" : undefined}
-                className={cn(
-                  "composer-submit",
-                  hasHydrated && submitUnavailable && "composer-submit--disabled"
-                )}
-                type="submit"
-                aria-label="Send"
-              >
-                <ArrowUp size={16} strokeWidth={2.5} />
-              </button>
+              {isGenerating ? (
+                <button
+                  className="composer-submit composer-stop"
+                  type="button"
+                  aria-label="Stop generating"
+                  onClick={abortMessage}
+                >
+                  <Square size={14} strokeWidth={0} fill="currentColor" />
+                </button>
+              ) : (
+                <button
+                  aria-disabled={hasHydrated && submitUnavailable ? "true" : undefined}
+                  className={cn(
+                    "composer-submit",
+                    hasHydrated && submitUnavailable && "composer-submit--disabled"
+                  )}
+                  type="submit"
+                  aria-label="Send"
+                >
+                  <ArrowUp size={16} strokeWidth={2.5} />
+                </button>
+              )}
             </form>
           </div>
         </main>

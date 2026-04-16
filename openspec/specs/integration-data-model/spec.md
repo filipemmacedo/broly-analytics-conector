@@ -12,7 +12,15 @@ Every integration record SHALL include: `id` (UUID), `provider`, `displayName`, 
 ---
 
 ### Requirement: Integration supports typed auth configurations
-The `authConfig` field SHALL be a discriminated union typed by `authType`, supporting: `api-key`, `oauth2`, `service-account`, and `token-endpoint`.
+The `authConfig` field SHALL be a discriminated union typed by `authType`, supporting: `api-key`, `oauth2`, `service-account`, `token-endpoint`, and `oauth2-code-flow`.
+
+The `oauth2-code-flow` member SHALL carry:
+- `clientId` (string, plain - public identifier, appears in OAuth URLs)
+- `clientSecret` (string, secret - encrypted at rest)
+- `accessToken` (optional string, secret - encrypted at rest, obtained after user authorization)
+- `refreshToken` (optional string, secret - encrypted at rest)
+- `expiresAt` (optional number - Unix ms timestamp of access token expiry)
+- `scope` (optional string)
 
 #### Scenario: API key auth config is stored correctly
 - **WHEN** an integration with `authType: "api-key"` is saved
@@ -25,6 +33,17 @@ The `authConfig` field SHALL be a discriminated union typed by `authType`, suppo
 #### Scenario: Token endpoint auth config is stored correctly
 - **WHEN** an integration with `authType: "token-endpoint"` is saved
 - **THEN** `authConfig` contains `token` and `endpoint` fields (token encrypted at rest)
+
+#### Scenario: OAuth2 code flow app credentials are stored with partial encryption
+- **WHEN** an integration with `authType: "oauth2-code-flow"` is saved with `clientId` and `clientSecret`
+- **THEN** `clientSecret` is encrypted at rest
+- **AND** `clientId` is stored in plain text
+- **AND** `accessToken` and `refreshToken`, when present, are encrypted at rest
+
+#### Scenario: OAuth2 code flow record is valid without access token
+- **WHEN** an integration with `authType: "oauth2-code-flow"` is saved containing only `clientId` and `clientSecret`
+- **THEN** the record is persisted successfully with `status: "configured"`
+- **AND** `accessToken` is absent from the record
 
 ---
 
@@ -44,6 +63,13 @@ The `status` field SHALL be one of: `configured`, `unconfigured`, `error`, `expi
 
 ### Requirement: Credentials are encrypted at rest
 All secret fields within `authConfig` SHALL be encrypted using AES-256-GCM with a server-side key before being persisted to storage.
+
+Secret fields by `authType`:
+- `api-key`: `apiKey`
+- `oauth2`: `accessToken`, `refreshToken`
+- `service-account`: `serviceAccountJson`
+- `token-endpoint`: `token`
+- `oauth2-code-flow`: `clientSecret`, `accessToken`, `refreshToken`
 
 #### Scenario: Secret field is encrypted before write
 - **WHEN** an integration with credential data is persisted

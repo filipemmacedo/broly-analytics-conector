@@ -8,15 +8,27 @@ The system SHALL provide a dedicated Settings > Integrations page at `/settings/
 - **THEN** the page displays one integration card per supported provider (Power BI, Google Analytics, BigQuery)
 - **AND** each card shows the provider name, current status, and available actions
 
-#### Scenario: Empty state for unconfigured provider
-- **WHEN** a provider has no saved integration
-- **THEN** the card shows an empty state with a "Connect" or "Set up" call-to-action
-- **AND** no credentials or partial config are displayed
+#### Scenario: GA4 card shows two-phase setup actions
+- **WHEN** the user navigates to the Google Analytics integration card with no integration saved
+- **THEN** the primary action button reads "Set up" (opens credential form)
+
+#### Scenario: GA4 card shows Connect button after credentials saved
+- **WHEN** a `google-analytics` integration exists with `authType: "oauth2-code-flow"` and a `clientId` but no `accessToken`
+- **THEN** the primary action button reads "Connect with Google"
+
+#### Scenario: GA4 card shows Reconnect button after successful OAuth
+- **WHEN** a `google-analytics` integration exists with `authType: "oauth2-code-flow"` and a non-empty `accessToken`
+- **THEN** the primary action button reads "Reconnect with Google"
 
 ---
 
 ### Requirement: User can create a new integration
 The system SHALL allow the user to create a new integration by filling in provider-specific credential fields and saving.
+
+#### Scenario: GA4 form collects Client ID and Client Secret
+- **WHEN** the user opens the Google Analytics setup form
+- **THEN** the form shows a "Client ID" text field and a "Client Secret" password field
+- **AND** no raw access token input is shown for the `oauth2-code-flow` credential type
 
 #### Scenario: Successful creation with API key auth
 - **WHEN** the user fills in all required fields for an API key integration and clicks Save
@@ -90,11 +102,11 @@ The system SHALL require the following fields for a Power BI integration: displa
 ---
 
 ### Requirement: Google Analytics provider fields
-The system SHALL require the following fields for a Google Analytics integration: display name, property ID, and either an OAuth token or a service account JSON credential.
+The system SHALL require the following fields for a Google Analytics integration: display name, property ID, and either service account JSON credentials or browser-entered OAuth app credentials (`clientId` and `clientSecret`) used for the authorization code flow.
 
 #### Scenario: GA4 form renders correct fields
 - **WHEN** the user opens the Google Analytics integration form
-- **THEN** fields for property ID and credential input (service account JSON or OAuth) are visible
+- **THEN** fields for property ID and credential input (service account JSON or OAuth app credentials) are visible
 
 ---
 

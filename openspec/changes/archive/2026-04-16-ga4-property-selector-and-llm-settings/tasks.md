@@ -52,8 +52,8 @@
 
 ## 10. Verification
 
-- [ ] 10.1 Test GA4 properties endpoint end-to-end with a real service account (or mock JSON) — verify property list returns correctly
-- [ ] 10.2 Test property selection persists across page refresh
-- [ ] 10.3 Test LLM settings save, mask, and test-ping flow for at least one provider (Anthropic)
-- [ ] 10.4 Verify chat route still works for BigQuery and Power BI with the new context parameter in place
+- [x] 10.1 Test GA4 properties endpoint end-to-end with a real service account (or mock JSON) — verify property list returns correctly
+- [x] 10.2 Test property selection persists across page refresh
+- [x] 10.3 Test LLM settings save, mask, and test-ping flow for at least one provider (Anthropic)
+- [x] 10.4 Verify chat route still works for BigQuery and Power BI with the new context parameter in place
 - [x] 10.5 Run `npm run build` and confirm no TypeScript errors (pre-existing demo-data errors excluded — not introduced by this change)
