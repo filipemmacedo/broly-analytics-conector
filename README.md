@@ -15,13 +15,17 @@ The current product direction is centered on Google Analytics 4. GA4 questions a
 
 ## Tech Stack
 
-- Next.js App Router
-- React
-- TypeScript
-- Local JSON/file-backed persistence under `data/`
-- Google Analytics Admin API for property discovery
-- Google Analytics Data API for reports
-- Provider-specific LLM APIs for natural-language planning and response generation
+- **Next.js App Router** — framework and routing
+- **React / TypeScript** — UI and type safety
+- **[Recharts](https://recharts.org)** — inline line charts inside chat bubbles
+- **[Radix UI / react-accordion](https://www.radix-ui.com/primitives/docs/components/accordion)** — accordion in the data sources panel
+- **[Lucide React](https://lucide.dev)** — icons
+- **[google-auth-library](https://github.com/googleapis/google-auth-library-nodejs)** — GA4 OAuth token handling server-side
+- **Custom CSS** — no component library (no Tailwind, no MUI, no shadcn); all UI is built with plain CSS using design tokens in `src/app/globals.css`
+- **Local JSON/file-backed persistence** under `data/`
+- **Google Analytics Admin API** for property discovery
+- **Google Analytics Data API** for reports
+- **Provider-specific LLM APIs** for natural-language planning and response generation (Anthropic, OpenAI, Google, Mistral)
 
 ## Project Structure
 
@@ -175,29 +179,66 @@ Return to the dashboard at `http://localhost:3000` and ask questions such as:
 
 The assistant fetches GA4 metadata for the selected property, asks the configured LLM to choose valid GA4 metrics and dimensions, runs the report, and summarizes the result in chat.
 
-## Inline Line Charts
+## Response Visuals
 
-When you ask for one or more metrics broken down by day, Broly renders an interactive line chart directly inside the chat bubble instead of a text table.
+Broly automatically chooses how to display GA4 results based on the shape of the data returned. There are three possible outputs for every analytics question.
+
+### Line Chart — temporal analysis
+
+When you ask for a metric broken down **over time** (by day, by week, as a trend), Broly renders an interactive multi-line chart directly inside the chat bubble.
 
 ![alt text](image.png)
 
+**Triggered when:** the GA4 query includes the `date` dimension — i.e. the user is asking about how something changes over time.
+
 **How it works:**
-
-- The LLM is instructed to include the `date` dimension whenever the question asks for a trend, daily breakdown, or time-series comparison.
-- The GA4 Data API rows are parsed into chart data on the server — the LLM only writes a short 1–2 sentence trend summary, keeping output tokens minimal.
+- The LLM is instructed to include `date` in the dimensions whenever the question implies a time series.
+- The GA4 rows are parsed into chart points on the server. The LLM writes a short 1–2 sentence trend insight only — it does not narrate the individual numbers.
 - Single-metric queries produce one line. Multi-metric queries (e.g. "sessions and pageviews by day") produce one coloured line per metric with a legend.
-- Charts are rendered client-side using [Recharts](https://recharts.org) via a dynamic import, keeping the server bundle lean.
+- Rendered client-side via [Recharts](https://recharts.org) with a dynamic import (`ssr: false`).
 
-**Example prompts that trigger a chart:**
-
+**Example prompts:**
 - `Sessions by day for the last 2 weeks`
 - `Sessions and pageviews by day`
 - `Show me the traffic trend this month`
 - `Daily active users for the last 20 days`
 
-**Current testing-phase limits:**
+**Current limit:** date-dimension queries are capped at **20 days** of data (`MAX_CHART_DAYS` in `src/lib/llm-planner.ts`) while the feature is being validated.
 
-Date-dimension queries are capped at **20 days** of data. This limit exists to keep GA4 API usage and LLM context size predictable while the chart feature is being validated. The cap is defined by `MAX_CHART_DAYS` in `src/lib/llm-planner.ts` and can be raised once the feature is stable and pagination is in place.
+---
+
+### Data Table — dimensional breakdown
+
+When you ask for a metric broken down **by a non-time dimension** (by country, device, channel, page, source, etc.), Broly renders an inline data table inside the chat bubble.
+
+**Triggered when:** the GA4 query includes at least one dimension that is not `date` — i.e. the user is asking how something differs across categories.
+
+**How it works:**
+- The LLM is instructed to include the relevant dimension (e.g. `country`, `deviceCategory`) when the question asks for a breakdown by category.
+- Columns are ordered: dimensions first, metrics last.
+- Dimension values are left-aligned; metric values are right-aligned and formatted with thousand separators (e.g. `1,234,567`).
+- The LLM writes a short 1–2 sentence insight — it does not list the rows.
+- Rows are capped at 20 (the same limit as the text summary path).
+
+**Example prompts:**
+- `Top 5 countries by sessions`
+- `Sessions by device category last month`
+- `Bounce rate by page`
+- `Top channels by purchase revenue`
+
+---
+
+### Plain Text — scalar answers
+
+When you ask for a single aggregate value or a conceptual question, Broly replies with a plain conversational message — no chart, no table.
+
+**Triggered when:** the GA4 query has no dimensions (just raw metric totals), or the question is conceptual and does not require a data API call at all.
+
+**Example prompts:**
+- `Total sessions last month`
+- `What is the bounce rate?`
+- `How does GA4 calculate engagement rate?`
+- `Total purchase revenue for the last 30 days`
 
 ## GA4 Troubleshooting
 
