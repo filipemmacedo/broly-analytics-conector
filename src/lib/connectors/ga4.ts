@@ -135,6 +135,29 @@ function formatRowsAsMarkdownTable(
   return [headerRow, separator, ...dataRows].join("\n");
 }
 
+function sanitizeOrderBys(orderBys?: GA4OrderBy[]): GA4OrderBy[] | undefined {
+  const sanitized: GA4OrderBy[] = [];
+
+  for (const orderBy of orderBys ?? []) {
+    if (orderBy.metric?.metricName) {
+      sanitized.push({
+        metric: { metricName: orderBy.metric.metricName },
+        ...(typeof orderBy.desc === "boolean" ? { desc: orderBy.desc } : {})
+      });
+      continue;
+    }
+
+    if (orderBy.dimension?.dimensionName) {
+      sanitized.push({
+        dimension: { dimensionName: orderBy.dimension.dimensionName },
+        ...(typeof orderBy.desc === "boolean" ? { desc: orderBy.desc } : {})
+      });
+    }
+  }
+
+  return sanitized.length ? sanitized : undefined;
+}
+
 export async function runGA4Report(
   accessToken: string,
   propertyId: string,
@@ -147,7 +170,8 @@ export async function runGA4Report(
   };
   if (params.dimensions?.length) body.dimensions = params.dimensions;
   if (params.dateRanges?.length) body.dateRanges = params.dateRanges;
-  if (params.orderBys?.length) body.orderBys = params.orderBys;
+  const orderBys = sanitizeOrderBys(params.orderBys);
+  if (orderBys?.length) body.orderBys = orderBys;
   if (params.limit) body.limit = params.limit;
   if (params.dimensionFilter) body.dimensionFilter = params.dimensionFilter;
   if (params.metricFilter) body.metricFilter = params.metricFilter;

@@ -25,8 +25,9 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
             ? <User size={11} strokeWidth={2.5} />
             : <Bot size={11} strokeWidth={2.5} />}
         </span>
-        <span>{message.role}</span>
-        {message.source ? <span>{message.source}</span> : null}
+        <span><span>{message.role === "assistant" ? "broly" : message.role}</span>
+</span>
+        {message.source ? <span>Tool:{message.source}</span> : null}
         <span>{formatTime(message.createdAt)}</span>
       </div>
       <div className="message-bubble__content">{message.content}</div>

@@ -44,6 +44,9 @@ const PROVIDER_DISPLAY_NAMES: Record<SourceId, string> = {
   ga4: "Google Analytics"
 };
 
+const GENERIC_GA4_QUERY_ERROR =
+  "I couldn't complete that Google Analytics query. Please try rephrasing it or check the selected GA4 property and date range.";
+
 function pushAssistantMessage(
   session: SessionState,
   content: string,
@@ -111,9 +114,15 @@ export async function handleQuestion(session: SessionState, question: string, co
       const answer = await runGA4AgentTurn(llmConfig, ga4AccessToken, ga4PropertyId, question);
       pushAssistantMessage(session, answer, "ga4", "complete");
     } catch (error) {
+      console.error("GA4 query failed", {
+        question,
+        propertyId: ga4PropertyId,
+        message: error instanceof Error ? error.message : String(error)
+      });
+
       pushAssistantMessage(
         session,
-        error instanceof Error ? error.message : "The GA4 query failed. Check your connection and try again.",
+        GENERIC_GA4_QUERY_ERROR,
         "ga4",
         "error"
       );
