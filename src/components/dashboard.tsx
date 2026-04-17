@@ -101,6 +101,7 @@ export function Dashboard() {
   const [hasHydrated, setHasHydrated] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const chatListRef = useRef<HTMLDivElement>(null);
   const previousSessionIdRef = useRef<string | null>(null);
   const previousMessageCountRef = useRef(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -126,6 +127,24 @@ export function Dashboard() {
     previousSessionIdRef.current = sessionId;
     previousMessageCountRef.current = messageCount;
   }, [activeSession?.id, activeSession?.messages.length, isTyping]);
+
+  // Re-scroll when a chart or table loads in (dynamic imports expand the layout
+  // after the initial message-count scroll has already fired).
+  useEffect(() => {
+    const el = chatListRef.current;
+    if (!el) return;
+
+    let lastHeight = el.scrollHeight;
+    const observer = new ResizeObserver(() => {
+      if (el.scrollHeight > lastHeight) {
+        bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+      }
+      lastHeight = el.scrollHeight;
+    });
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (!textareaRef.current) return;
@@ -284,7 +303,7 @@ export function Dashboard() {
                 textareaRef.current?.focus();
               }} />
             ) : (
-              <div className="editorial-chat-list">
+              <div className="editorial-chat-list" ref={chatListRef}>
                 {messages.map((message) => (
                   <MessageBubble key={message.id} message={message} />
                 ))}

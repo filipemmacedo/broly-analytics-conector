@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { getRedirectUri } from "@/lib/env";
-import { createIntegration, getAllIntegrations, updateIntegration } from "@/lib/integration-store";
+import { createIntegration, getAllIntegrations, setActiveSource, updateIntegration } from "@/lib/integration-store";
 import type { OAuth2CodeFlowAuthConfig } from "@/types/integration";
 
 import { GA4_OAUTH_STATE_COOKIE } from "../start/route";
@@ -110,6 +110,9 @@ export async function GET(request: Request) {
         providerFields: { propertyId: "" }
       });
     }
+
+    // Deactivate all other sources; GA4 is now the active source
+    setActiveSource("google-analytics");
 
     return NextResponse.redirect(new URL(`${base}?ga4_connected=1`, request.url));
   } catch (err) {

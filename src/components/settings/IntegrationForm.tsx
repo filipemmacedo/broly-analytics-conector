@@ -162,7 +162,7 @@ function BigQueryFields({
   return (
     <>
       <label className="form-field">
-        <span>Project ID</span>
+        <span>GCP Project ID</span>
         <input
           className={errors.projectId ? "error" : ""}
           onChange={(e) => onChange("projectId", e.target.value)}
@@ -174,63 +174,32 @@ function BigQueryFields({
       </label>
 
       <label className="form-field">
-        <span>Dataset</span>
+        <span>OAuth Client ID</span>
         <input
-          className={errors.dataset ? "error" : ""}
-          onChange={(e) => onChange("dataset", e.target.value)}
-          placeholder="my_dataset"
+          className={errors.clientId ? "error" : ""}
+          onChange={(e) => onChange("clientId", e.target.value)}
+          placeholder="441744xxx.apps.googleusercontent.com"
           type="text"
-          value={values.dataset ?? ""}
+          value={values.clientId ?? ""}
         />
-        {errors.dataset ? <span className="field-error">{errors.dataset}</span> : null}
+        {errors.clientId ? <span className="field-error">{errors.clientId}</span> : null}
       </label>
 
       <label className="form-field">
-        <span>Region (optional)</span>
+        <span>OAuth Client Secret</span>
         <input
-          onChange={(e) => onChange("region", e.target.value)}
-          placeholder="US"
-          type="text"
-          value={values.region ?? ""}
+          className={errors.clientSecret ? "error" : ""}
+          onChange={(e) => onChange("clientSecret", e.target.value)}
+          placeholder={values.clientSecret === MASKED_SENTINEL ? MASKED_SENTINEL : "GOCSPX-..."}
+          type="password"
+          value={values.clientSecret ?? ""}
         />
+        {errors.clientSecret ? <span className="field-error">{errors.clientSecret}</span> : null}
       </label>
 
-      <label className="form-field">
-        <span>Credential type</span>
-        <select
-          onChange={(e) => onChange("credentialType", e.target.value)}
-          value={values.credentialType ?? "token-endpoint"}
-        >
-          <option value="token-endpoint">Access token</option>
-          <option value="service-account">Service account JSON</option>
-        </select>
-      </label>
-
-      {(values.credentialType ?? "token-endpoint") === "token-endpoint" ? (
-        <label className="form-field">
-          <span>Access Token</span>
-          <input
-            className={errors.token ? "error" : ""}
-            onChange={(e) => onChange("token", e.target.value)}
-            placeholder={values.token === MASKED_SENTINEL ? MASKED_SENTINEL : "ya29.xxxxxxxx"}
-            type="password"
-            value={values.token ?? ""}
-          />
-          {errors.token ? <span className="field-error">{errors.token}</span> : null}
-        </label>
-      ) : (
-        <label className="form-field">
-          <span>Service Account JSON</span>
-          <textarea
-            className={errors.serviceAccountJson ? "error" : ""}
-            onChange={(e) => onChange("serviceAccountJson", e.target.value)}
-            placeholder={values.serviceAccountJson === MASKED_SENTINEL ? MASKED_SENTINEL : '{"type":"service_account",...}'}
-            rows={5}
-            value={values.serviceAccountJson ?? ""}
-          />
-          {errors.serviceAccountJson ? <span className="field-error">{errors.serviceAccountJson}</span> : null}
-        </label>
-      )}
+      <p className="form-hint">
+        Dataset is hardcoded to <code>ga4analytics</code>. After saving, click &ldquo;Connect with Google&rdquo; to authenticate and select your GA4 property.
+      </p>
     </>
   );
 }
@@ -255,15 +224,11 @@ function buildAuthConfig(provider: IntegrationProvider, values: Record<string, s
   }
 
   if (provider === "bigquery") {
-    const credType = values.credentialType ?? "token-endpoint";
-    if (credType === "token-endpoint") {
-      return {
-        authType: "token-endpoint",
-        token: values.token ?? "",
-        endpoint: "https://bigquery.googleapis.com"
-      };
-    }
-    return { authType: "service-account", serviceAccountJson: values.serviceAccountJson ?? "" };
+    return {
+      authType: "oauth2-code-flow",
+      clientId: values.clientId ?? "",
+      clientSecret: values.clientSecret ?? ""
+    };
   }
 
   return null;
@@ -284,8 +249,8 @@ function buildProviderFields(provider: IntegrationProvider, values: Record<strin
   if (provider === "bigquery") {
     return {
       projectId: values.projectId ?? "",
-      dataset: values.dataset ?? "",
-      region: values.region ?? ""
+      propertyId: values.propertyId ?? "",
+      propertyName: values.propertyName ?? ""
     };
   }
   return {};
@@ -316,13 +281,10 @@ function validate(provider: IntegrationProvider, displayName: string, values: Re
   }
 
   if (provider === "bigquery") {
-    if (!values.projectId?.trim()) errors.projectId = "Project ID is required";
-    if (!values.dataset?.trim()) errors.dataset = "Dataset is required";
-    const credType = values.credentialType ?? "token-endpoint";
-    if (credType === "token-endpoint" && (!values.token?.trim() || values.token === MASKED_SENTINEL))
-      errors.token = "Access token is required";
-    if (credType === "service-account" && (!values.serviceAccountJson?.trim() || values.serviceAccountJson === MASKED_SENTINEL))
-      errors.serviceAccountJson = "Service account JSON is required";
+    if (!values.projectId?.trim()) errors.projectId = "GCP Project ID is required";
+    if (!values.clientId?.trim()) errors.clientId = "OAuth Client ID is required";
+    if (!values.clientSecret?.trim() || values.clientSecret === MASKED_SENTINEL)
+      errors.clientSecret = "OAuth Client Secret is required";
   }
 
   return errors;
