@@ -1,4 +1,4 @@
-// LLM analytics agent — translates natural-language questions into GA4 Data API
+// GA4 analytics agent — translates natural-language questions into GA4 Data API
 // calls using tool/function calling, then summarizes results in natural language.
 // Supports Anthropic, OpenAI, Google Gemini, and Mistral via raw fetch (no SDKs).
 
@@ -93,6 +93,10 @@ const RUN_GA4_REPORT_SCHEMA = {
       limit: {
         type: "number",
         description: "Maximum number of rows to return (default 10, max 20)"
+      },
+      dimensionFilter: {
+        type: "object",
+        description: "Filter rows by dimension values. Use this whenever the user asks for specific dimension values (e.g. 'only Direct and Referral', 'just mobile', 'United States only'). Structure: { \"filter\": { \"fieldName\": \"<dimensionName>\", \"inListFilter\": { \"values\": [\"Value1\", \"Value2\"] } } }. For a single value use stringFilter instead: { \"filter\": { \"fieldName\": \"<dimensionName>\", \"stringFilter\": { \"value\": \"Value\", \"matchType\": \"EXACT\" } } }. Examples: filter sessionDefaultChannelGroup to Direct+Referral: { \"filter\": { \"fieldName\": \"sessionDefaultChannelGroup\", \"inListFilter\": { \"values\": [\"Direct\", \"Referral\"] } } }. Filter deviceCategory to mobile: { \"filter\": { \"fieldName\": \"deviceCategory\", \"stringFilter\": { \"value\": \"mobile\", \"matchType\": \"EXACT\" } } }."
       }
     },
     required: ["metrics", "dateRanges"]
@@ -111,7 +115,6 @@ async function fetchWithRetry(
     const res = await fetch(url, init);
     if (res.status !== 429) return res;
 
-    // Respect Retry-After header if present, otherwise use exponential backoff
     const retryAfter = res.headers.get("Retry-After");
     const waitMs = retryAfter
       ? parseFloat(retryAfter) * 1000
@@ -431,7 +434,7 @@ async function callLLMForSummary(config: LLMConfig, messages: Message[]): Promis
 const MAX_ROWS_FOR_SUMMARY = 20;
 
 function buildSystemPrompt(metadataBlock: string): string {
-  const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+  const today = new Date().toISOString().split("T")[0];
 
   const metadataSection = metadataBlock
     ? `\n\nWhen calling runGA4Report, ONLY use metric and dimension apiNames from this list:\n\n${metadataBlock}`
@@ -479,11 +482,96 @@ Distinguishing chart from table:
   - "sessions by day"     → date dimension → line chart
   - "sessions by country" → country dimension → data table
 
+FILTER RULE — when the user names specific dimension values (e.g. "only Direct and Referral", "just mobile", "United States only"), you MUST add a dimensionFilter to restrict results to exactly those values. Never return all values when the user asked for specific ones.
+Examples:
+  - "direct and referral sessions"            → dimensionFilter: { filter: { fieldName: "sessionDefaultChannelGroup", inListFilter: { values: ["Direct", "Referral"] } } }
+  - "only mobile sessions"                    → dimensionFilter: { filter: { fieldName: "deviceCategory", stringFilter: { value: "mobile", matchType: "EXACT" } } }
+  - "sessions from United States"             → dimensionFilter: { filter: { fieldName: "country", stringFilter: { value: "United States", matchType: "EXACT" } } }
+
 For conceptual or definitional questions (e.g. "what is the difference between X and Y?", "explain metric Z", "how does GA4 calculate bounce rate?"):
 - Answer directly from your knowledge without calling any tool${metadataSection}`;
 }
 
 const MAX_CHART_POINTS = 365;
+
+// ─── Date gap filling ─────────────────────────────────────────────────────────
+
+function resolveGA4Date(date: string): string {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (date === "today") return today.toISOString().split("T")[0];
+  if (date === "yesterday") {
+    const d = new Date(today);
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().split("T")[0];
+  }
+  const match = date.match(/^(\d+)daysAgo$/i);
+  if (match) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - parseInt(match[1], 10));
+    return d.toISOString().split("T")[0];
+  }
+  return date; // already YYYY-MM-DD
+}
+
+function allDatesInRange(startDate: string, endDate: string): string[] {
+  const start = new Date(resolveGA4Date(startDate));
+  const end = new Date(resolveGA4Date(endDate));
+  const dates: string[] = [];
+  const cur = new Date(start);
+  while (cur <= end) {
+    dates.push(cur.toISOString().split("T")[0]);
+    cur.setDate(cur.getDate() + 1);
+  }
+  return dates;
+}
+
+// Fills dates GA4 omits when there is no activity, inserting zeros.
+// Works for both simple (date + metrics) and pivot (date + group dim + metrics) layouts.
+function fillMissingDates(
+  rows: Record<string, string>[],
+  startDate: string,
+  endDate: string
+): Record<string, string>[] {
+  if (!rows.length) return rows;
+
+  const keys = Object.keys(rows[0]);
+  if (!keys.includes("date")) return rows;
+
+  const metricKeys = keys.filter((k) => k !== "date" && !isNaN(Number(rows[0][k])));
+  const dimKeys    = keys.filter((k) => k !== "date" &&  isNaN(Number(rows[0][k])));
+  const allDates   = allDatesInRange(startDate, endDate);
+
+  if (dimKeys.length === 0) {
+    // Simple case — one row per date
+    const existingDates = new Set(rows.map((r) => normaliseGA4Date(r["date"])));
+    const filled = [...rows];
+    for (const date of allDates) {
+      if (!existingDates.has(date)) {
+        const empty: Record<string, string> = { date };
+        for (const m of metricKeys) empty[m] = "0";
+        filled.push(empty);
+      }
+    }
+    return filled;
+  }
+
+  // Pivot case — one row per date × group combination
+  const groupKey    = dimKeys[0];
+  const groupValues = [...new Set(rows.map((r) => r[groupKey]))];
+  const existing    = new Set(rows.map((r) => `${normaliseGA4Date(r["date"])}|${r[groupKey]}`));
+  const filled      = [...rows];
+  for (const date of allDates) {
+    for (const gv of groupValues) {
+      if (!existing.has(`${date}|${gv}`)) {
+        const empty: Record<string, string> = { date, [groupKey]: gv };
+        for (const m of metricKeys) empty[m] = "0";
+        filled.push(empty);
+      }
+    }
+  }
+  return filled;
+}
 
 export function normaliseGA4Date(raw: string): string {
   if (raw.length === 8 && /^\d{8}$/.test(raw)) {
@@ -518,25 +606,56 @@ export function extractChartData(rows: Record<string, string>[]): ChartData | un
   const keys = Object.keys(rows[0]);
   if (!keys.includes("date")) return undefined;
 
-  const metrics = keys.filter((k) => k !== "date" && !isNaN(Number(rows[0][k])));
-  if (metrics.length === 0) return undefined;
+  // Numeric columns (metrics) — everything except "date" that parses as a number
+  const numericKeys = keys.filter((k) => k !== "date" && !isNaN(Number(rows[0][k])));
+  if (numericKeys.length === 0) return undefined;
 
-  const points = rows
+  // String dimension columns — non-date, non-numeric (e.g. sessionDefaultChannelGroup)
+  const dimKeys = keys.filter((k) => k !== "date" && isNaN(Number(rows[0][k])));
+
+  // ── Simple case: no group dimension — one series per numeric metric ──────────
+  if (dimKeys.length === 0) {
+    const points = rows
+      .slice(0, MAX_CHART_POINTS)
+      .map((row) => {
+        const point: Record<string, string | number> = { date: normaliseGA4Date(row["date"]) };
+        for (const m of numericKeys) point[m] = Number(row[m]);
+        return point;
+      })
+      .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+
+    return points.length > 0 ? { points, metrics: numericKeys } : undefined;
+  }
+
+  // ── Pivot case: group dimension present (e.g. channel, device, country) ──────
+  // Use the first string dimension as the pivot key, first numeric as the value.
+  const groupKey = dimKeys[0];
+  const valueKey = numericKeys[0];
+
+  // Collect all unique group values (sorted for deterministic legend order)
+  const groupValues = [...new Set(rows.map((r) => r[groupKey]))].sort();
+
+  // Accumulate values by date × group
+  const byDate = new Map<string, Map<string, number>>();
+  for (const row of rows) {
+    const date = normaliseGA4Date(row["date"]);
+    if (!byDate.has(date)) byDate.set(date, new Map());
+    byDate.get(date)!.set(row[groupKey], Number(row[valueKey]));
+  }
+
+  const points = [...byDate.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
     .slice(0, MAX_CHART_POINTS)
-    .map((row) => {
-      const point: Record<string, string | number> = { date: normaliseGA4Date(row["date"]) };
-      for (const m of metrics) point[m] = Number(row[m]);
+    .map(([date, groups]) => {
+      const point: Record<string, string | number> = { date };
+      for (const gv of groupValues) point[gv] = groups.get(gv) ?? 0;
       return point;
-    })
-    .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    });
 
-  return points.length > 0 ? { points, metrics } : undefined;
+  return points.length > 0 ? { points, metrics: groupValues } : undefined;
 }
 
 // Deterministic mapping from natural-language terms users write → GA4 apiNames.
-// Used to supplement the LLM's tool call when the LLM drops a metric the user
-// explicitly requested (LLMs reliably pick a "primary" metric but sometimes omit
-// secondary ones even when instructed).
 const USER_TERM_TO_GA4_METRIC: Record<string, string> = {
   "pageview": "screenPageViews",
   "pageviews": "screenPageViews",
@@ -572,7 +691,7 @@ function supplementMetrics(
   for (const [term, apiName] of Object.entries(USER_TERM_TO_GA4_METRIC)) {
     if (!present.has(apiName) && lower.includes(term)) {
       extra.push({ name: apiName });
-      present.add(apiName); // avoid duplicates if multiple terms map to the same metric
+      present.add(apiName);
     }
   }
   return extra.length > 0 ? [...llmMetrics, ...extra] : llmMetrics;
@@ -589,7 +708,6 @@ export async function runGA4AgentTurn(
   propertyId: string,
   question: string
 ): Promise<GA4AgentTurnResult> {
-  // Fetch property metadata (cached after first call) to ground the LLM in real metric/dimension names
   const metadata = await getGA4Metadata(ga4AccessToken, propertyId);
   const metadataBlock = formatMetadataForPrompt(metadata);
   const systemPrompt = buildSystemPrompt(metadataBlock);
@@ -604,7 +722,7 @@ export async function runGA4AgentTurn(
 
   // Step 2: If LLM chose to answer directly (no tool call), return as-is
   if (!result.toolCall) {
-    return { summary: result.text ?? "I couldn't generate an analytics response for that question." };
+    return { summary: result.text || "I couldn't generate an analytics response for that question." };
   }
 
   // Step 3: Execute the GA4 tool call
@@ -614,35 +732,44 @@ export async function runGA4AgentTurn(
     dateRanges?: Array<{ startDate: string; endDate: string }>;
     orderBys?: Array<{ metric?: { metricName: string }; dimension?: { dimensionName: string }; desc?: boolean }>;
     limit?: number;
+    dimensionFilter?: unknown;
   };
 
-  // Supplement: add any metrics the user explicitly mentioned that the LLM dropped
   params.metrics = supplementMetrics(params.metrics, question);
 
-  // For date-dimension queries the limit drives chart resolution.
-  // Capped at 20 days during the testing phase to keep GA4 API usage and LLM
-  // context size predictable while the chart feature is being validated.
-  // Raise MAX_CHART_DAYS once the feature is stable and pagination is in place.
   const MAX_CHART_DAYS = 20;
   const hasDateDim = params.dimensions?.some((d) => d.name === "date") ?? false;
   const maxRows = hasDateDim ? MAX_CHART_DAYS : MAX_ROWS_FOR_SUMMARY;
   const limit = Math.min(params.limit ?? (hasDateDim ? MAX_CHART_DAYS : 10), maxRows);
 
-  const { table: rawTable, rows } = await runGA4Report(ga4AccessToken, propertyId, {
+  const dateRange = params.dateRanges?.[0] ?? { startDate: "28daysAgo", endDate: "today" };
+
+  const { table: rawTable, rows: rawRows } = await runGA4Report(ga4AccessToken, propertyId, {
     metrics: params.metrics,
     dimensions: params.dimensions,
-    dateRanges: params.dateRanges ?? [{ startDate: "28daysAgo", endDate: "today" }],
+    dateRanges: [dateRange],
     orderBys: params.orderBys,
+    dimensionFilter: params.dimensionFilter,
     limit
   });
 
-  // Step 4: Detect whether this result warrants a chart or table.
+  // Fill dates GA4 omitted (zero-activity days) so charts show the full range.
+  const rows = hasDateDim
+    ? fillMissingDates(rawRows, dateRange.startDate, dateRange.endDate)
+    : rawRows;
+
+  // Step 4: Short-circuit for empty results — no LLM summarization needed.
+  if (rows.length === 0) {
+    return { summary: "No data found for this query in the selected date range. The property may have no recorded activity, or the metric and dimension combination may not apply." };
+  }
+
+  // Step 5: Detect whether this result warrants a chart or table.
   const chartData = extractChartData(rows);
   const tableData = chartData === undefined ? extractTableData(rows) : undefined;
   const isChartQuery = chartData !== undefined;
   const isTableQuery = tableData !== undefined;
 
-  // Step 5: Send rows back to LLM for natural-language summarization
+  // Step 6: Send rows back to LLM for natural-language summarization
   const summarisationInstruction = isChartQuery
     ? "A line chart will be rendered automatically for this data. Respond with only a 1-2 sentence insight about the trend — do not list or narrate individual data points."
     : isTableQuery
@@ -664,7 +791,7 @@ export async function runGA4AgentTurn(
 
   const summary = await callLLMForSummary(llmConfig, summaryMessages);
 
-  // Step 6: Build visual payload
+  // Step 7: Build visual payload
   const visual: VisualData | undefined = chartData
     ? { type: "chart", data: chartData }
     : tableData

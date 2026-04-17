@@ -151,6 +151,7 @@ export function getAllIntegrations(): Integration[] {
   const stored = readStore();
   return stored.map((record) => ({
     ...record,
+    isActive: record.isActive ?? false,
     authConfig: decryptAuthConfig(record.authConfig)
   }));
 }
@@ -164,6 +165,7 @@ export function createIntegration(data: {
   displayName: string;
   authConfig: AuthConfig;
   providerFields: Integration["providerFields"];
+  isActive?: boolean;
 }): Integration {
   const now = new Date().toISOString();
   const integration: Integration = {
@@ -175,6 +177,7 @@ export function createIntegration(data: {
     providerFields: data.providerFields,
     status: "configured",
     healthState: "unknown",
+    isActive: data.isActive ?? false,
     lastCheckedAt: null,
     createdAt: now,
     updatedAt: now
@@ -198,6 +201,7 @@ export function updateIntegration(
     providerFields: Integration["providerFields"];
     status: IntegrationStatus;
     healthState: Integration["healthState"];
+    isActive: boolean;
     lastCheckedAt: string | null;
   }>
 ): Integration | null {
@@ -216,6 +220,7 @@ export function updateIntegration(
     authConfig: data.authConfig
       ? mergeAuthConfig(existing.authConfig, data.authConfig)
       : existing.authConfig,
+    isActive: data.isActive !== undefined ? data.isActive : existing.isActive,
     updatedAt: new Date().toISOString()
   };
 
@@ -245,6 +250,22 @@ export function getIntegrationStatusSummaries(): IntegrationStatusSummary[] {
     displayName: r.displayName,
     status: r.status,
     healthState: r.healthState,
+    isActive: r.isActive ?? false,
     lastCheckedAt: r.lastCheckedAt
   }));
+}
+
+// Sets the given provider's integration as the active source and deactivates all others.
+export function setActiveSource(provider: IntegrationProvider): void {
+  const stored = readStore();
+  for (const record of stored) {
+    record.isActive = record.provider === provider;
+  }
+  writeStore(stored);
+}
+
+// Returns the integration currently marked as active, or null if none.
+export function getActiveIntegration(): Integration | null {
+  const all = getAllIntegrations();
+  return all.find((i) => i.isActive) ?? null;
 }
