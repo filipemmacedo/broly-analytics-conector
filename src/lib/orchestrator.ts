@@ -1,51 +1,17 @@
 import { randomUUID } from "node:crypto";
 
-import { runBigQueryExecution } from "@/lib/connectors/bigquery";
-import { runPowerBIExecution } from "@/lib/connectors/powerbi";
-import { getIntegrationStatusSummaries } from "@/lib/integration-store";
-import { runGA4AgentTurn } from "@/lib/llm-planner";
-import { planExecution } from "@/lib/planner";
+import { runBigQueryAgentTurn } from "@/lib/agents/bigquery-agent";
+import { getActiveIntegration } from "@/lib/integration-store";
+import { runGA4AgentTurn } from "@/lib/agents/ga4-agent";
+import { getFreshAccessToken as getBQFreshToken } from "@/lib/providers/bigquery";
+import { getFreshAccessToken as getGA4FreshToken } from "@/lib/providers/google-analytics";
+import type { BigQueryFields, GoogleAnalyticsFields } from "@/types/integration";
 import type { ChatMessage, SessionState, SourceId } from "@/lib/types";
 import type { LLMProvider } from "@/types/llm";
 
 export interface ChatContext {
-  ga4PropertyId?: string | null;
-  ga4AccessToken?: string | null;
   llmConfig?: { provider: LLMProvider; model: string; apiKey: string } | null;
 }
-
-const PROVIDER_TO_SOURCE: Record<string, SourceId> = {
-  bigquery: "bigquery",
-  powerbi: "powerbi",
-  "google-analytics": "ga4"
-};
-
-function getHealthySourceIds(): Set<SourceId> {
-  const summaries = getIntegrationStatusSummaries();
-  const healthy = new Set<SourceId>();
-  for (const s of summaries) {
-    const sourceId = PROVIDER_TO_SOURCE[s.provider];
-    if (sourceId && s.status === "configured" && (s.healthState === "healthy" || s.healthState === "unknown")) {
-      healthy.add(sourceId);
-    }
-  }
-  return healthy;
-}
-
-const PROVIDER_SETTINGS_LINKS: Record<SourceId, string> = {
-  bigquery: "/settings/integrations/bigquery",
-  powerbi: "/settings/integrations/powerbi",
-  ga4: "/settings/integrations/google-analytics"
-};
-
-const PROVIDER_DISPLAY_NAMES: Record<SourceId, string> = {
-  bigquery: "BigQuery",
-  powerbi: "Power BI",
-  ga4: "Google Analytics"
-};
-
-const GENERIC_GA4_QUERY_ERROR =
-  "I couldn't complete that Google Analytics query. Please try rephrasing it or check the selected GA4 property and date range.";
 
 function pushAssistantMessage(
   session: SessionState,
@@ -64,7 +30,7 @@ function pushAssistantMessage(
 }
 
 export async function handleQuestion(session: SessionState, question: string, context?: ChatContext) {
-  const { ga4PropertyId, ga4AccessToken, llmConfig } = context ?? {};
+  const { llmConfig } = context ?? {};
 
   const userMessage: ChatMessage = {
     id: randomUUID(),
@@ -75,22 +41,37 @@ export async function handleQuestion(session: SessionState, question: string, co
   };
   session.chat.push(userMessage);
 
-  // ─── GA4 path (LLM-powered analytics agent) ───────────────────────────────
+  // ─── Resolve active source ────────────────────────────────────────────────
 
-  const healthySources = getHealthySourceIds();
+  const activeIntegration = getActiveIntegration();
 
-  if (healthySources.has("ga4") || ga4PropertyId) {
-    if (!llmConfig) {
-      pushAssistantMessage(
-        session,
-        "An LLM must be configured to query Google Analytics. Go to Settings > LLM to set up a provider.",
-        "ga4",
-        "error"
-      );
-      return session;
-    }
+  if (!activeIntegration) {
+    pushAssistantMessage(
+      session,
+      "No analytics source is connected. Go to Settings > Integrations to connect Google Analytics or BigQuery.",
+      undefined,
+      "error"
+    );
+    return session;
+  }
 
-    if (!ga4PropertyId) {
+  if (!llmConfig) {
+    pushAssistantMessage(
+      session,
+      "An LLM must be configured to query your data. Go to Settings > LLM to set up a provider.",
+      undefined,
+      "error"
+    );
+    return session;
+  }
+
+  // ─── GA4 path ─────────────────────────────────────────────────────────────
+
+  if (activeIntegration.provider === "google-analytics") {
+    const fields = activeIntegration.providerFields as GoogleAnalyticsFields;
+    const propertyId = fields?.propertyId;
+
+    if (!propertyId) {
       pushAssistantMessage(
         session,
         "No GA4 property selected. Go to Settings > Integrations > Google Analytics to select a property.",
@@ -100,10 +81,13 @@ export async function handleQuestion(session: SessionState, question: string, co
       return session;
     }
 
-    if (!ga4AccessToken) {
+    let accessToken: string;
+    try {
+      accessToken = await getGA4FreshToken(activeIntegration.id);
+    } catch {
       pushAssistantMessage(
         session,
-        "Google Analytics is not connected. Set it up in Settings > Integrations to use this source. (/settings/integrations/google-analytics)",
+        "Google Analytics is not authenticated or the session has expired. Click \"Connect with Google\" in Settings > Integrations > Google Analytics.",
         "ga4",
         "error"
       );
@@ -111,7 +95,7 @@ export async function handleQuestion(session: SessionState, question: string, co
     }
 
     try {
-      const { summary, visual } = await runGA4AgentTurn(llmConfig, ga4AccessToken, ga4PropertyId, question);
+      const { summary, visual } = await runGA4AgentTurn(llmConfig, accessToken, propertyId, question);
       const message: ChatMessage = {
         id: randomUUID(),
         role: "assistant",
@@ -125,13 +109,12 @@ export async function handleQuestion(session: SessionState, question: string, co
     } catch (error) {
       console.error("GA4 query failed", {
         question,
-        propertyId: ga4PropertyId,
+        propertyId,
         message: error instanceof Error ? error.message : String(error)
       });
-
       pushAssistantMessage(
         session,
-        GENERIC_GA4_QUERY_ERROR,
+        "I couldn't complete that Google Analytics query. Please try rephrasing it or check the selected GA4 property and date range.",
         "ga4",
         "error"
       );
@@ -140,44 +123,70 @@ export async function handleQuestion(session: SessionState, question: string, co
     return session;
   }
 
-  // ─── BigQuery / Power BI path (rule-based planner) ────────────────────────
+  // ─── BigQuery path ────────────────────────────────────────────────────────
 
-  const plan = planExecution(question, session);
-  if (plan.clarification) {
-    pushAssistantMessage(session, plan.clarification, undefined, "error");
+  if (activeIntegration.provider === "bigquery") {
+    const fields = activeIntegration.providerFields as BigQueryFields;
+    const projectId = fields?.projectId;
+    const propertyName = fields?.propertyName || fields?.propertyId || "GA4 Export";
+
+    if (!projectId) {
+      pushAssistantMessage(
+        session,
+        "BigQuery project ID is not configured. Go to Settings > Integrations > BigQuery to set it up.",
+        "bigquery",
+        "error"
+      );
+      return session;
+    }
+
+    let bqAccessToken: string;
+    try {
+      bqAccessToken = await getBQFreshToken(activeIntegration.id);
+    } catch {
+      pushAssistantMessage(
+        session,
+        "BigQuery is not authenticated or the session has expired. Click \"Connect with Google\" in Settings > Integrations > BigQuery.",
+        "bigquery",
+        "error"
+      );
+      return session;
+    }
+
+    try {
+      const { summary } = await runBigQueryAgentTurn(llmConfig, bqAccessToken, projectId, propertyName, question);
+      session.chat.push({
+        id: randomUUID(),
+        role: "assistant",
+        content: summary,
+        createdAt: new Date().toISOString(),
+        source: "bigquery",
+        status: "complete"
+      });
+    } catch (error) {
+      console.error("BigQuery query failed", {
+        question,
+        projectId,
+        message: error instanceof Error ? error.message : String(error)
+      });
+      pushAssistantMessage(
+        session,
+        error instanceof Error ? error.message : "The BigQuery query failed. Try rephrasing or check your connection.",
+        "bigquery",
+        "error"
+      );
+    }
+
     return session;
   }
 
-  const legacyConnected =
-    plan.source !== "ga4" && session.connections[plan.source as "bigquery" | "powerbi"]?.status === "connected";
+  // ─── Unknown provider ─────────────────────────────────────────────────────
 
-  if (!legacyConnected && !healthySources.has(plan.source)) {
-    const providerName = PROVIDER_DISPLAY_NAMES[plan.source];
-    const settingsLink = PROVIDER_SETTINGS_LINKS[plan.source];
-    pushAssistantMessage(
-      session,
-      `${providerName} is not connected. Set it up in Settings > Integrations to use this source. (${settingsLink})`,
-      plan.source,
-      "error"
-    );
-    return session;
-  }
-
-  try {
-    const result =
-      plan.source === "bigquery"
-        ? await runBigQueryExecution(session.connections.bigquery, plan)
-        : await runPowerBIExecution(session.connections.powerbi, plan);
-
-    pushAssistantMessage(session, result.answer, plan.source, "complete");
-  } catch (error) {
-    pushAssistantMessage(
-      session,
-      error instanceof Error ? error.message : "The source query failed. Check the selected connection and try again.",
-      plan.source,
-      "error"
-    );
-  }
-
+  pushAssistantMessage(
+    session,
+    "The active integration uses an unsupported provider. Go to Settings > Integrations to reconfigure.",
+    undefined,
+    "error"
+  );
   return session;
 }

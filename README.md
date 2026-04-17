@@ -311,3 +311,17 @@ npm run typecheck
 ```
 
 `npm run typecheck` currently reports existing demo connection-status type errors in `src/lib/demo-data.ts` and `src/lib/store.ts`. Those are unrelated to the GA4 connection flow described above.
+
+## Known Limitations
+
+### BigQuery Connector — Sync Queries API
+
+The BigQuery connector uses the **synchronous queries API** (`POST /projects/{id}/queries`) for simplicity. This has the following constraints:
+
+- **~20s timeout** — queries that take longer will fail with a timeout error. The LLM is instructed to always include `LIMIT` clauses to keep result sets small, but complex aggregations over large date ranges may still time out.
+- **Max 20 rows returned** — the connector caps results at 20 rows per query.
+- **Not suitable for large datasets** — if you're querying months of high-traffic GA4 export data, some queries will be too slow for the sync API.
+
+**When to migrate:** If users regularly hit timeouts, migrate to the **BigQuery Jobs API** (`POST /projects/{id}/jobs` with a `configuration.query` body). The Jobs API is asynchronous — it returns a `jobId` immediately, which you then poll until complete. This adds latency for fast queries but removes the timeout ceiling for slow ones.
+
+The relevant file is `src/lib/agents/bigquery-agent.ts` — specifically the `executeBigQueryQuery` function.

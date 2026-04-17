@@ -2,11 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Check, ChevronDown, Globe } from "lucide-react";
+import { Check, ChevronDown, Database, Globe } from "lucide-react";
 
-import { ConnectionStatusBadge } from "@/components/ui/ConnectionStatusBadge";
 import { useIntegrations } from "@/context/IntegrationContext";
-import type { HealthState, IntegrationProvider, IntegrationStatus, IntegrationStatusSummary } from "@/types/integration";
+import type { IntegrationProvider, IntegrationStatusSummary } from "@/types/integration";
+
+// ─── GA4 property picker ──────────────────────────────────────────────────────
 
 interface GA4Property {
   propertyId: string;
@@ -14,7 +15,13 @@ interface GA4Property {
   accountName: string;
 }
 
-function GA4PropertyPicker() {
+function PropertyPicker({
+  endpoint,
+  selectedEndpoint
+}: {
+  endpoint: string;
+  selectedEndpoint: string;
+}) {
   const [properties, setProperties] = useState<GA4Property[]>([]);
   const [selected, setSelected] = useState<string>("");
   const [open, setOpen] = useState(false);
@@ -25,8 +32,8 @@ function GA4PropertyPicker() {
     void (async () => {
       try {
         const [propsRes, selRes] = await Promise.all([
-          fetch("/api/integrations/google-analytics/properties"),
-          fetch("/api/integrations/google-analytics/properties/selected")
+          fetch(endpoint),
+          fetch(selectedEndpoint)
         ]);
         if (propsRes.ok) {
           const data = (await propsRes.json()) as GA4Property[];
@@ -37,33 +44,22 @@ function GA4PropertyPicker() {
           setSelected(sel.propertyId ?? "");
         }
       } catch {
-        // silently ignore — sidebar should not hard-fail
+        // silently ignore
       } finally {
         setIsLoading(false);
       }
     })();
-  }, []);
+  }, [endpoint, selectedEndpoint]);
 
-  // Close on outside click
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  if (isLoading) {
-    return (
-      <div className="ga4-property-picker">
-        <div className="ga4-picker-loading" aria-hidden="true">···</div>
-      </div>
-    );
-  }
-
-  if (properties.length === 0) return null;
+  if (isLoading || properties.length === 0) return null;
 
   const selectedProp = properties.find((p) => p.propertyId === selected);
 
@@ -71,14 +67,12 @@ function GA4PropertyPicker() {
     setSelected(propertyId);
     setOpen(false);
     try {
-      await fetch("/api/integrations/google-analytics/properties/selected", {
+      await fetch(selectedEndpoint, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ propertyId })
       });
-    } catch {
-      // silently ignore
-    }
+    } catch { /* silently ignore */ }
   }
 
   return (
@@ -116,50 +110,91 @@ function GA4PropertyPicker() {
   );
 }
 
+// ─── Source row ───────────────────────────────────────────────────────────────
 
-const PROVIDERS: {
-  provider: IntegrationProvider;
-  label: string;
-  icon: React.ReactNode;
-}[] = [
-  { provider: "google-analytics", label: "Google Analytics", icon: <Globe size={18} strokeWidth={1.75} /> }
-];
+const PROVIDER_META: Record<IntegrationProvider, { label: string; icon: React.ReactNode }> = {
+  "google-analytics": { label: "Google Analytics", icon: <Globe size={15} strokeWidth={1.75} /> },
+  bigquery:           { label: "BigQuery",          icon: <Database size={15} strokeWidth={1.75} /> },
+  powerbi:            { label: "Power BI",          icon: <Database size={15} strokeWidth={1.75} /> }
+};
 
 function SourceRow({
-  label,
-  icon,
-  provider,
-  summary
+  summary,
+  isActive,
+  onActivate
 }: {
-  label: string;
-  icon: React.ReactNode;
-  provider: IntegrationProvider;
-  summary: IntegrationStatusSummary | undefined;
+  summary: IntegrationStatusSummary;
+  isActive: boolean;
+  onActivate: () => void;
 }) {
-  const status: IntegrationStatus = summary?.status ?? "unconfigured";
-  const healthState: HealthState = summary?.healthState ?? "unknown";
-  const isGA4Connected = provider === "google-analytics" && status === "configured";
+  const meta = PROVIDER_META[summary.provider];
+  const isConfigured = summary.status === "configured";
+
+  const ga4HasToken = summary.provider === "google-analytics" && isConfigured;
+  const bqHasToken  = summary.provider === "bigquery" && isConfigured;
 
   return (
-    <div className="source-status-group">
-      <Link className="source-status-row" href={`/settings/integrations/${provider}`}>
-        <div className="source-row-icon">{icon}</div>
-        <div className="source-row-body">
-          <span className="source-row-name">{label}</span>
-          <ConnectionStatusBadge
-            healthState={healthState}
-            lastCheckedAt={summary?.lastCheckedAt}
-            status={status}
-          />
-        </div>
-      </Link>
-      {isGA4Connected ? <GA4PropertyPicker /> : null}
+    <div className={`source-row-entry${isActive ? " source-row-entry--active" : ""}`}>
+      <div className="source-row-header">
+        <button
+          className="source-row-selector"
+          disabled={!isConfigured || isActive}
+          onClick={isConfigured && !isActive ? onActivate : undefined}
+          title={isActive ? "Active source" : isConfigured ? "Set as active source" : "Not configured"}
+          type="button"
+        >
+          <span className={`source-radio${isActive ? " source-radio--on" : ""}`} />
+          <span className="source-row-icon">{meta.icon}</span>
+          <span className="source-row-label">{meta.label}</span>
+        </button>
+
+        <Link
+          className="source-row-settings"
+          href={`/settings/integrations/${summary.provider}`}
+          title="Configure"
+        >
+          {isConfigured ? (
+            <span className="source-dot source-dot--connected" />
+          ) : (
+            <span className="source-dot source-dot--idle" />
+          )}
+        </Link>
+      </div>
+
+      {ga4HasToken ? (
+        <PropertyPicker
+          endpoint="/api/integrations/google-analytics/properties"
+          selectedEndpoint="/api/integrations/google-analytics/properties/selected"
+        />
+      ) : null}
+
+      {bqHasToken ? (
+        <PropertyPicker
+          endpoint="/api/integrations/bigquery/properties"
+          selectedEndpoint="/api/integrations/bigquery/properties/selected"
+        />
+      ) : null}
     </div>
   );
 }
 
+// ─── Panel ────────────────────────────────────────────────────────────────────
+
+const PANEL_PROVIDERS: IntegrationProvider[] = ["google-analytics", "bigquery"];
+
 export function DataSourcesPanel() {
-  const { integrations, isLoading } = useIntegrations();
+  const { integrations, isLoading, refresh } = useIntegrations();
+
+  async function activate(provider: IntegrationProvider) {
+    try {
+      await fetch("/api/integrations/active-source", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider })
+      });
+      refresh();
+    } catch { /* silently ignore */ }
+  }
 
   if (isLoading) {
     return <div className="source-rail-loading">Loading…</div>;
@@ -167,14 +202,36 @@ export function DataSourcesPanel() {
 
   return (
     <div className="data-sources-status-list">
-      {PROVIDERS.map(({ provider, label, icon }) => {
+      {PANEL_PROVIDERS.map((provider) => {
         const summary = integrations.find((i) => i.provider === provider);
+        if (!summary) {
+          // Not configured yet — show a link to set it up
+          const meta = PROVIDER_META[provider];
+          return (
+            <div className="source-row-entry" key={provider}>
+              <div className="source-row-header">
+                <span className="source-row-selector source-row-selector--unconfigured">
+                  <span className="source-radio" />
+                  <span className="source-row-icon">{meta.icon}</span>
+                  <span className="source-row-label">{meta.label}</span>
+                </span>
+                <Link
+                  className="source-row-settings"
+                  href={`/settings/integrations/${provider}`}
+                  title="Configure"
+                >
+                  <span className="source-dot source-dot--idle" />
+                </Link>
+              </div>
+            </div>
+          );
+        }
+
         return (
           <SourceRow
-            icon={icon}
+            isActive={summary.isActive}
             key={provider}
-            label={label}
-            provider={provider}
+            onActivate={() => void activate(provider)}
             summary={summary}
           />
         );

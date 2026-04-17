@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { BigQueryPropertySelector } from "@/components/settings/BigQueryPropertySelector";
 import { GA4PropertySelector } from "@/components/settings/GA4PropertySelector";
 import { IntegrationForm } from "@/components/settings/IntegrationForm";
 import { ConnectionStatusBadge } from "@/components/ui/ConnectionStatusBadge";
@@ -24,15 +25,18 @@ type TestState = "idle" | "testing" | "success" | "error";
 type Props = {
   provider: IntegrationProvider;
   integration: PublicIntegration | null;
+  activeIntegration: PublicIntegration | null;
   onRefresh: () => void;
 };
 
-export function IntegrationCard({ provider, integration, onRefresh }: Props) {
+export function IntegrationCard({ provider, integration, activeIntegration, onRefresh }: Props) {
   const [isEditing, setIsEditing] = useState(false);
   const [testState, setTestState] = useState<TestState>("idle");
   const [testMessage, setTestMessage] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showSwitchConfirm, setShowSwitchConfirm] = useState(false);
+  const [pendingConnectHref, setPendingConnectHref] = useState<string | null>(null);
 
   async function handleSave(data: {
     displayName: string;
@@ -90,7 +94,34 @@ export function IntegrationCard({ provider, integration, onRefresh }: Props) {
   }
 
   function handleGoogleConnect() {
-    window.location.href = "/api/connect/ga4/start";
+    initiateConnect("/api/connect/ga4/start");
+  }
+
+  function handleBigQueryConnect() {
+    initiateConnect("/api/connect/bigquery/start");
+  }
+
+  function initiateConnect(href: string) {
+    // If another source is already active, show confirmation before proceeding
+    if (activeIntegration && activeIntegration.provider !== provider) {
+      setPendingConnectHref(href);
+      setShowSwitchConfirm(true);
+    } else {
+      window.location.href = href;
+    }
+  }
+
+  function confirmSwitch() {
+    if (pendingConnectHref) {
+      window.location.href = pendingConnectHref;
+    }
+    setShowSwitchConfirm(false);
+    setPendingConnectHref(null);
+  }
+
+  function cancelSwitch() {
+    setShowSwitchConfirm(false);
+    setPendingConnectHref(null);
   }
 
   if (isEditing) {
@@ -109,11 +140,19 @@ export function IntegrationCard({ provider, integration, onRefresh }: Props) {
     );
   }
 
+  const isActive = integration?.isActive === true;
+  const activeLabel = activeIntegration
+    ? PROVIDER_LABELS[activeIntegration.provider as IntegrationProvider]
+    : null;
+
   return (
-    <div className="integration-card">
+    <div className={`integration-card${isActive ? " integration-card-active" : ""}`}>
       <div className="integration-card-header">
         <div>
-          <h3>{PROVIDER_LABELS[provider]}</h3>
+          <h3>
+            {PROVIDER_LABELS[provider]}
+            {isActive ? <span className="active-source-badge">Active</span> : null}
+          </h3>
           <p className="integration-card-description">{PROVIDER_DESCRIPTIONS[provider]}</p>
         </div>
         {integration ? (
@@ -148,6 +187,36 @@ export function IntegrationCard({ provider, integration, onRefresh }: Props) {
           />
         );
       })()}
+
+      {(() => {
+        const bqAuth = integration?.authConfig as OAuth2CodeFlowAuthConfig | undefined;
+        const hasToken = bqAuth?.authType === "oauth2-code-flow" && Boolean(bqAuth?.accessToken);
+        if (provider !== "bigquery" || !hasToken) return null;
+        const currentPropertyId = (integration?.providerFields as { propertyId?: string } | undefined)?.propertyId;
+        return (
+          <BigQueryPropertySelector
+            currentPropertyId={currentPropertyId}
+            onSelected={onRefresh}
+          />
+        );
+      })()}
+
+      {showSwitchConfirm ? (
+        <div className="delete-confirm">
+          <p>
+            This will deactivate your current <strong>{activeLabel}</strong> connection and make{" "}
+            <strong>{PROVIDER_LABELS[provider]}</strong> the active source. Continue?
+          </p>
+          <div className="delete-confirm-actions">
+            <button className="btn-primary" onClick={confirmSwitch} type="button">
+              Continue
+            </button>
+            <button className="btn-ghost" onClick={cancelSwitch} type="button">
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {!integration ? (
         <p className="integration-empty-state">
@@ -201,6 +270,24 @@ export function IntegrationCard({ provider, integration, onRefresh }: Props) {
               </button>
             );
           })()
+        ) : provider === "bigquery" ? (
+          (() => {
+            const bqAuth = integration?.authConfig as OAuth2CodeFlowAuthConfig | undefined;
+            const isCodeFlow = bqAuth?.authType === "oauth2-code-flow";
+            const hasToken = isCodeFlow && Boolean(bqAuth?.accessToken);
+            if (!integration || !isCodeFlow) {
+              return (
+                <button className="btn-primary" onClick={() => setIsEditing(true)} type="button">
+                  Set up
+                </button>
+              );
+            }
+            return (
+              <button className="btn-primary" onClick={handleBigQueryConnect} type="button">
+                {hasToken ? "Reconnect with Google" : "Connect with Google"}
+              </button>
+            );
+          })()
         ) : (
           <button className="btn-primary" onClick={() => setIsEditing(true)} type="button">
             {integration ? "Edit" : "Set up"}
@@ -208,7 +295,7 @@ export function IntegrationCard({ provider, integration, onRefresh }: Props) {
         )}
         {integration ? (
           <>
-            {provider === "google-analytics" ? (
+            {provider === "google-analytics" || provider === "bigquery" ? (
               <button className="btn-secondary" onClick={() => setIsEditing(true)} type="button">
                 Edit
               </button>
