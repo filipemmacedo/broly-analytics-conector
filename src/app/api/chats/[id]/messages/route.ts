@@ -1,13 +1,10 @@
 import { NextResponse } from "next/server";
 
 import { getChat, saveChat } from "@/lib/chat-store";
-import { getAllIntegrations } from "@/lib/integration-store";
 import { getLLMSettings } from "@/lib/llm-settings-store";
 import { handleQuestion } from "@/lib/orchestrator";
-import { getFreshAccessToken } from "@/lib/providers/google-analytics";
 import { ensureSession } from "@/lib/session";
 import type { SessionState } from "@/lib/types";
-import type { GoogleAnalyticsFields } from "@/types/integration";
 
 export async function POST(
   request: Request,
@@ -25,29 +22,12 @@ export async function POST(
 
   const isFirstMessage = chatSession.messages.length === 0;
 
-  // Resolve GA4 credentials — use getFreshAccessToken so expired tokens are
-  // automatically refreshed using the stored refresh token before the query.
-  const integrations = getAllIntegrations();
-  const ga4 = integrations.find((i) => i.provider === "google-analytics");
-  const ga4Fields = ga4?.providerFields as GoogleAnalyticsFields | undefined;
-  const ga4PropertyId = ga4Fields?.propertyId ?? null;
-
-  let ga4AccessToken: string | null = null;
-  if (ga4 && (ga4.authConfig.authType === "oauth2" || ga4.authConfig.authType === "oauth2-code-flow")) {
-    try {
-      ga4AccessToken = await getFreshAccessToken(ga4.id);
-    } catch {
-      // Token refresh failed — proceed with null; orchestrator will surface the error
-      ga4AccessToken = null;
-    }
-  }
-
   const llmSettings = getLLMSettings();
   const llmConfig = llmSettings
     ? { provider: llmSettings.provider, model: llmSettings.model, apiKey: llmSettings.apiKey }
     : null;
 
-  // Get connection state (BigQuery / Power BI) from the existing session store
+  // Get connection state from the existing session store
   const { session: connSession } = await ensureSession();
 
   // Build a temporary SessionState to pass to the orchestrator, seeded with
@@ -61,8 +41,6 @@ export async function POST(
   };
 
   const updated = await handleQuestion(tempSession, body.question.trim(), {
-    ga4PropertyId,
-    ga4AccessToken,
     llmConfig
   });
 

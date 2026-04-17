@@ -61,8 +61,8 @@ export type GoogleAnalyticsFields = {
 
 export type BigQueryFields = {
   projectId: string;
-  dataset: string;
-  region?: string;
+  propertyId: string;
+  propertyName: string;
 };
 
 export type ProviderFields = PowerBIFields | GoogleAnalyticsFields | BigQueryFields;
@@ -76,6 +76,7 @@ export interface Integration {
   providerFields: ProviderFields;
   status: IntegrationStatus;
   healthState: HealthState;
+  isActive: boolean;
   lastCheckedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -98,6 +99,7 @@ export interface PublicIntegration {
   providerFields: ProviderFields;
   status: IntegrationStatus;
   healthState: HealthState;
+  isActive: boolean;
   lastCheckedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -109,5 +111,6 @@ export interface IntegrationStatusSummary {
   displayName: string;
   status: IntegrationStatus;
   healthState: HealthState;
+  isActive: boolean;
   lastCheckedAt: string | null;
 }
