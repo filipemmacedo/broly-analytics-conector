@@ -11,9 +11,9 @@ import {
   MessageSquare,
   PanelLeft,
   Settings,
-  Sparkles,
   Square,
-  TrendingUp
+  TrendingUp,
+  Terminal
 } from "lucide-react";
 
 import { ChatHistorySidebar } from "@/components/ChatHistorySidebar";
@@ -26,9 +26,9 @@ import { useChatSession } from "@/context/ChatSessionContext";
 import { cn } from "@/lib/utils";
 
 const templates = [
-  "Weekly revenue trends",
-  "User retention cohorts",
-  "Marketing attribution"
+  "Top 5 Page Path by sessions per day in the last 5 days",
+  "Top 5 Source sessions last 5 days",
+  "Marketing attribution more relevant in the last 5 days"
 ];
 
 const COMPOSER_MAX_HEIGHT_RATIO = 0.1;
@@ -64,7 +64,7 @@ function EmptyState({
   return (
     <div className="empty-state">
       <div className="empty-icon-wrap">
-        <Sparkles size={26} strokeWidth={1.5} />
+        <Terminal size={26} strokeWidth={1.5} />
       </div>
       <h2>Ask anything.</h2>
       <p>Connect a source or pick a template to start exploring your intelligence landscape.</p>

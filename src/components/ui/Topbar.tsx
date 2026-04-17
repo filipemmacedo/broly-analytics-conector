@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronDown, Zap } from "lucide-react";
+import { ScanEye } from "lucide-react";
 
 export function Topbar({
   children,
@@ -13,7 +13,7 @@ export function Topbar({
   const brandContent = (
     <>
       <div className="brand-icon">
-        <Zap size={14} strokeWidth={2.5} />
+        <ScanEye size={14} strokeWidth={2.5} />
       </div>
       <div className="brand-mark">Broly</div>
     </>
@@ -41,7 +41,6 @@ export function Topbar({
       {title ? (
         <div className="topbar-title" title={title}>
           <span>{title}</span>
-          <ChevronDown size={14} strokeWidth={1.75} />
         </div>
       ) : <div />}
     </header>
