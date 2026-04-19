@@ -25,11 +25,15 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: "No BigQuery integration found" }, { status: 404 });
   }
 
+  const numericId = propertyId.replace(/^properties\//, "");
+  const datasetId = `analytics_${numericId}`;
+
   const updated = updateIntegration(integration.id, {
     providerFields: {
       ...integration.providerFields,
       propertyId,
-      propertyName: propertyName ?? propertyId
+      propertyName: propertyName ?? propertyId,
+      datasetId
     }
   });
 
