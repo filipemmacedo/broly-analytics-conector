@@ -152,6 +152,7 @@ export function getAllIntegrations(): Integration[] {
   return stored.map((record) => ({
     ...record,
     isActive: record.isActive ?? false,
+    status: resolveStatus(record),
     authConfig: decryptAuthConfig(record.authConfig)
   }));
 }
@@ -242,13 +243,25 @@ export function deleteIntegration(id: string): boolean {
   return true;
 }
 
+// Returns "expired" if the stored auth config contains an expiresAt timestamp that
+// has already passed. expiresAt is stored in milliseconds (Date.now() + expires_in * 1000)
+// and is NOT encrypted, so it can be read directly from the StoredAuthConfig.
+function resolveStatus(r: StoredIntegration): IntegrationStatus {
+  if (r.status === "unconfigured" || r.status === "error") return r.status;
+  const expiresAt = (r.authConfig as Record<string, unknown>)["expiresAt"];
+  if (typeof expiresAt === "number" && expiresAt > 0 && Date.now() >= expiresAt) {
+    return "expired";
+  }
+  return r.status;
+}
+
 export function getIntegrationStatusSummaries(): IntegrationStatusSummary[] {
   const stored = readStore();
   return stored.map((r) => ({
     id: r.id,
     provider: r.provider,
     displayName: r.displayName,
-    status: r.status,
+    status: resolveStatus(r),
     healthState: r.healthState,
     isActive: r.isActive ?? false,
     lastCheckedAt: r.lastCheckedAt

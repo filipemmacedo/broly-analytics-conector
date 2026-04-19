@@ -9,18 +9,20 @@ type Props = {
 };
 
 function getLabel(status: IntegrationStatus, healthState: HealthState): string {
-  if (status === "unconfigured") return "Setup needed";
-  if (status === "expired") return "Auth expired";
-  if (status === "error" || healthState === "unreachable") return "Error";
+  if (status === "unconfigured") return "Not set up";
+  if (status === "expired") return "Needs reconnect";
+  if (status === "error" || healthState === "unreachable") return "Connection error";
   if (healthState === "degraded") return "Degraded";
-  if (healthState === "healthy") return "Healthy";
+  if (healthState === "unknown") return "Not verified";
+  if (healthState === "healthy") return "Connected";
   return "Connected";
 }
 
 function getTone(status: IntegrationStatus, healthState: HealthState): "connected" | "error" | "warning" | "neutral" {
   if (status === "unconfigured") return "neutral";
-  if (status === "expired" || status === "error" || healthState === "unreachable") return "error";
-  if (healthState === "degraded") return "warning";
+  if (status === "expired") return "warning";
+  if (status === "error" || healthState === "unreachable") return "error";
+  if (healthState === "degraded" || healthState === "unknown") return "warning";
   return "connected";
 }
 

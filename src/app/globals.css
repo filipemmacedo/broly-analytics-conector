@@ -1506,6 +1506,16 @@ button {
   box-shadow: 0 0 0 2px rgba(30, 107, 60, 0.18);
 }
 
+.source-dot--attention {
+  background: #8a5400;
+  box-shadow: 0 0 0 2px rgba(138, 84, 0, 0.18);
+}
+
+.source-dot--error {
+  background: var(--error);
+  box-shadow: 0 0 0 2px rgba(186, 26, 26, 0.18);
+}
+
 .source-dot--idle {
   background: var(--outline-variant);
 }
@@ -1777,6 +1787,18 @@ body {
   background: var(--surface-container-low);
 }
 
+.settings-nav-link--home {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--secondary);
+  margin-bottom: 8px;
+}
+
+.settings-nav-link--home:hover {
+  color: var(--on-surface);
+}
+
 .settings-content {
   padding: 40px 48px;
   max-width: 900px;
@@ -1865,6 +1887,12 @@ body {
 .integration-empty-state {
   font-size: 13px;
   color: var(--secondary);
+  margin: 0;
+}
+
+.integration-expired-notice {
+  font-size: 13px;
+  color: #8a5400;
   margin: 0;
 }
 
