@@ -63,9 +63,3 @@ Tooltip copy pattern: `"{Label} · click to configure"` using the unified vocabu
 #### Scenario: Grey dot tooltip invites setup
 - **WHEN** the user hovers over a panel dot in the grey (idle) state
 - **THEN** a tooltip appears with text `"Not set up · click to configure"`
-
-## REMOVED Requirements
-
-### Requirement: Data Sources panel accepts credential input
-**Reason**: Connection management has been moved exclusively to Settings > Integrations. The sidebar is now a read-only status display.
-**Migration**: Users who previously configured connections in the sidebar must reconfigure them in Settings > Integrations. A one-time migration banner guides them through the process.

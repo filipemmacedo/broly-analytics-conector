@@ -2,7 +2,18 @@
 
 import { useEffect, useState } from "react";
 
-import type { LLMModel, LLMProvider, PublicLLMSettings } from "@/types/llm";
+import { ConnectionStatusBadge } from "@/components/ui/ConnectionStatusBadge";
+import type { HealthState, IntegrationStatus } from "@/types/integration";
+import type { LLMModel, LLMProvider, LLMStatus, PublicLLMSettings } from "@/types/llm";
+
+function llmStatusToProps(status: LLMStatus): { status: IntegrationStatus; healthState: HealthState } {
+  switch (status) {
+    case "ok":           return { status: "configured", healthState: "healthy" };
+    case "error":        return { status: "error",      healthState: "unknown" };
+    case "configured":   return { status: "configured", healthState: "unknown" };
+    case "unconfigured": return { status: "unconfigured", healthState: "unknown" };
+  }
+}
 
 const PROVIDERS: { id: LLMProvider; label: string }[] = [
   { id: "anthropic", label: "Anthropic" },
@@ -24,6 +35,8 @@ export function LLMProviderCard() {
   const [testState, setTestState] = useState<TestState>("idle");
   const [testMessage, setTestMessage] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [llmStatus, setLlmStatus] = useState<LLMStatus>("unconfigured");
+  const [lastTestedAt, setLastTestedAt] = useState<string | null>(null);
 
   // Load existing config on mount
   useEffect(() => {
@@ -47,6 +60,8 @@ export function LLMProviderCard() {
           setProvider(settings.provider);
           setModel(settings.model);
           setApiKey(settings.apiKeyMasked);
+          setLlmStatus(settings.status ?? "configured");
+          setLastTestedAt(settings.lastTestedAt ?? null);
         } else {
           // No saved config yet — load models for the default provider
           await loadModels("anthropic");
@@ -78,12 +93,19 @@ export function LLMProviderCard() {
   async function handleSave() {
     setIsSaving(true);
     try {
-      await fetch("/api/settings/llm", {
+      const res = await fetch("/api/settings/llm", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ provider, model, apiKey })
       });
-      await loadSettings();
+      if (res.ok) {
+        const saved = (await res.json()) as PublicLLMSettings;
+        setLlmStatus(saved.status ?? "configured");
+        setLastTestedAt(saved.lastTestedAt ?? null);
+        setApiKey(saved.apiKeyMasked);
+      } else {
+        await loadSettings();
+      }
     } finally {
       setIsSaving(false);
     }
@@ -95,16 +117,23 @@ export function LLMProviderCard() {
     try {
       const res = await fetch("/api/settings/llm/test", { method: "POST" });
       const data = (await res.json()) as { ok: boolean; latencyMs?: number; error?: string };
+      const now = new Date().toISOString();
       if (data.ok) {
         setTestState("success");
         setTestMessage(`Connected — ${data.latencyMs ?? 0}ms`);
+        setLlmStatus("ok");
+        setLastTestedAt(now);
       } else {
         setTestState("error");
         setTestMessage(data.error ?? "Connection failed");
+        setLlmStatus("error");
+        setLastTestedAt(now);
       }
     } catch {
       setTestState("error");
       setTestMessage("Connection test failed");
+      setLlmStatus("error");
+      setLastTestedAt(new Date().toISOString());
     }
     setTimeout(() => { setTestState("idle"); setTestMessage(null); }, 5000);
   }
@@ -122,6 +151,11 @@ export function LLMProviderCard() {
             Choose the AI provider and model that powers Broly&apos;s assistant.
           </p>
         </div>
+        <ConnectionStatusBadge
+          healthState={llmStatusToProps(llmStatus).healthState}
+          lastCheckedAt={lastTestedAt}
+          status={llmStatusToProps(llmStatus).status}
+        />
       </div>
 
       <div className="integration-form">

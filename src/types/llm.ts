@@ -1,5 +1,7 @@
 export type LLMProvider = "anthropic" | "openai" | "google" | "mistral";
 
+export type LLMStatus = "unconfigured" | "configured" | "ok" | "error";
+
 export interface LLMModel {
   id: string;
   displayName: string;
@@ -10,6 +12,8 @@ export interface LLMSettings {
   model: string;
   apiKey: string;
   configuredAt: string;
+  status: LLMStatus;
+  lastTestedAt: string | null;
 }
 
 export interface PublicLLMSettings {
@@ -17,4 +21,6 @@ export interface PublicLLMSettings {
   model: string;
   apiKeyMasked: string;
   configuredAt: string;
+  status: LLMStatus;
+  lastTestedAt: string | null;
 }

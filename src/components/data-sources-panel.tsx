@@ -199,6 +199,30 @@ function SnowflakePicker() {
   );
 }
 
+// ─── Dot state helpers ────────────────────────────────────────────────────────
+
+type DotState = "idle" | "connected" | "attention" | "error";
+
+function getDotState(status: IntegrationStatusSummary["status"], healthState: IntegrationStatusSummary["healthState"]): DotState {
+  if (status === "error") return "error";
+  if (status === "expired") return "attention";
+  if (status !== "configured") return "idle";
+  if (healthState === "unreachable") return "error";
+  if (healthState === "degraded" || healthState === "unknown") return "attention";
+  return "connected";
+}
+
+const DOT_LABELS: Record<DotState, string> = {
+  idle: "Not set up",
+  connected: "Connected",
+  attention: "Needs reconnect",
+  error: "Connection error"
+};
+
+function getDotTooltip(dotState: DotState): string {
+  return `${DOT_LABELS[dotState]} · click to configure`;
+}
+
 // ─── Source row ───────────────────────────────────────────────────────────────
 
 const PROVIDER_META: Record<IntegrationProvider, { label: string; icon: React.ReactNode }> = {
@@ -219,6 +243,7 @@ function SourceRow({
 }) {
   const meta = PROVIDER_META[summary.provider];
   const isConfigured = summary.status === "configured";
+  const dotState = getDotState(summary.status, summary.healthState);
 
   const ga4HasToken       = summary.provider === "google-analytics" && isConfigured;
   const bqHasToken        = summary.provider === "bigquery" && isConfigured;
@@ -242,13 +267,9 @@ function SourceRow({
         <Link
           className="source-row-settings"
           href={`/settings/integrations/${summary.provider}`}
-          title="Configure"
+          title={getDotTooltip(dotState)}
         >
-          {isConfigured ? (
-            <span className="source-dot source-dot--connected" />
-          ) : (
-            <span className="source-dot source-dot--idle" />
-          )}
+          <span className={`source-dot source-dot--${dotState}`} />
         </Link>
       </div>
 
@@ -311,7 +332,7 @@ export function DataSourcesPanel() {
                 <Link
                   className="source-row-settings"
                   href={`/settings/integrations/${provider}`}
-                  title="Configure"
+                  title={getDotTooltip("idle")}
                 >
                   <span className="source-dot source-dot--idle" />
                 </Link>

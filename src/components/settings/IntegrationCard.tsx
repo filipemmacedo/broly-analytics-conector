@@ -105,8 +105,12 @@ export function IntegrationCard({ provider, integration, activeIntegration, onRe
   }
 
   function initiateConnect(href: string) {
-    // If another source is already active, show confirmation before proceeding
-    if (activeIntegration && activeIntegration.provider !== provider) {
+    // Only warn if another source is active AND this provider has no token yet
+    // (i.e. first-time setup, not a reconnect of an existing integration).
+    const hasToken = Boolean(
+      (integration?.authConfig as { accessToken?: string } | undefined)?.accessToken
+    );
+    if (activeIntegration && activeIntegration.provider !== provider && !hasToken) {
       setPendingConnectHref(href);
       setShowSwitchConfirm(true);
     } else {
@@ -154,7 +158,7 @@ export function IntegrationCard({ provider, integration, activeIntegration, onRe
         <div>
           <h3>
             {PROVIDER_LABELS[provider]}
-            {isActive ? <span className="active-source-badge">Active</span> : null}
+            {isActive ? <span className="active-source-badge"> Active</span> : null}
           </h3>
           <p className="integration-card-description">{PROVIDER_DESCRIPTIONS[provider]}</p>
         </div>
@@ -167,7 +171,7 @@ export function IntegrationCard({ provider, integration, activeIntegration, onRe
         ) : (
           <span className="connection-status-badge tone-neutral">
             <span className="status-dot tone-neutral" />
-            Not configured
+            Not set up
           </span>
         )}
       </div>
@@ -218,8 +222,9 @@ export function IntegrationCard({ provider, integration, activeIntegration, onRe
       {showSwitchConfirm ? (
         <div className="delete-confirm">
           <p>
-            This will deactivate your current <strong>{activeLabel}</strong> connection and make{" "}
-            <strong>{PROVIDER_LABELS[provider]}</strong> the active source. Continue?
+            This will switch the active source from <strong>{activeLabel}</strong> to{" "}
+            <strong>{PROVIDER_LABELS[provider]}</strong>. Your {activeLabel} credentials will be
+            kept and you can switch back any time. Continue?
           </p>
           <div className="delete-confirm-actions">
             <button className="btn-primary" onClick={confirmSwitch} type="button">
@@ -236,6 +241,10 @@ export function IntegrationCard({ provider, integration, activeIntegration, onRe
         <p className="integration-empty-state">
           No connection configured. Set up your credentials to connect this source.
         </p>
+      ) : null}
+
+      {integration?.status === "expired" && (provider === "google-analytics" || provider === "bigquery") ? (
+        <p className="integration-expired-notice">Your Google authorization has expired.</p>
       ) : null}
 
       {testMessage ? (

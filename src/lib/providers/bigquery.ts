@@ -87,13 +87,16 @@ export async function testConnection(
     return { success: false, error: "Dataset ID is not configured. Select a GA4 property in Settings > Integrations > BigQuery." };
   }
 
-  // Resolve access token — prefer stored token for oauth2-code-flow
+  // Resolve access token — use getFreshAccessToken so expired tokens are
+  // automatically refreshed before testing, matching GA4's behaviour.
   let accessToken: string | null = null;
 
   if (integrationId) {
-    const integration = getIntegrationById(integrationId);
-    const auth = integration?.authConfig as OAuth2CodeFlowAuthConfig | undefined;
-    accessToken = auth?.accessToken ?? null;
+    try {
+      accessToken = await getFreshAccessToken(integrationId);
+    } catch {
+      accessToken = null;
+    }
   } else if (authConfig.authType === "oauth2-code-flow") {
     accessToken = (authConfig as OAuth2CodeFlowAuthConfig).accessToken ?? null;
   }

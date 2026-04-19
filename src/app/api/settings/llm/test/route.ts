@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { getLLMSettings } from "@/lib/llm-settings-store";
+import { getLLMSettings, updateLLMTestResult } from "@/lib/llm-settings-store";
 import { pingLLM } from "@/lib/llm-ping";
 
 export async function POST() {
@@ -11,5 +11,6 @@ export async function POST() {
   }
 
   const result = await pingLLM(settings.provider, settings.apiKey, settings.model);
+  updateLLMTestResult(result.ok);
   return NextResponse.json(result);
 }
