@@ -43,6 +43,9 @@ export function BigQueryPropertySelector({ currentPropertyId, onSelected }: Prop
 
       if (currentPropertyId) {
         setSelected(currentPropertyId);
+        // Re-save silently to backfill datasetId for existing integrations that predate this field
+        const match = data.find((p) => p.propertyId === currentPropertyId);
+        void saveProperty(currentPropertyId, match?.displayName ?? currentPropertyId);
       } else if (data.length === 1) {
         void saveProperty(data[0].propertyId, data[0].displayName);
       }

@@ -63,6 +63,7 @@ export type BigQueryFields = {
   projectId: string;
   propertyId: string;
   propertyName: string;
+  datasetId?: string;
 };
 
 export type ProviderFields = PowerBIFields | GoogleAnalyticsFields | BigQueryFields;

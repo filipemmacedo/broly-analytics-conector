@@ -9,7 +9,8 @@ The orchestrator SHALL route incoming questions to the correct LLM agent based o
 
 #### Scenario: Question routed to BigQuery agent when BigQuery is active
 - **WHEN** a user submits a question and a BigQuery integration has `isActive: true`
-- **THEN** the orchestrator SHALL call `runBigQueryAgentTurn` with the BigQuery access token, projectId, and propertyName
+- **THEN** the orchestrator SHALL call `runBigQueryAgentTurn` with the BigQuery access token, projectId, datasetId, and propertyName
+- **AND** the orchestrator SHALL destructure `{ summary, visual }` from the result and spread `visual` onto the chat message when present
 
 #### Scenario: No active source
 - **WHEN** a user submits a question and no integration has `isActive: true`
