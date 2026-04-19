@@ -1,4 +1,4 @@
-export type IntegrationProvider = "powerbi" | "google-analytics" | "bigquery";
+export type IntegrationProvider = "powerbi" | "google-analytics" | "bigquery" | "snowflake";
 
 export type AuthType = "api-key" | "oauth2" | "service-account" | "token-endpoint" | "oauth2-code-flow";
 
@@ -66,7 +66,14 @@ export type BigQueryFields = {
   datasetId?: string;
 };
 
-export type ProviderFields = PowerBIFields | GoogleAnalyticsFields | BigQueryFields;
+export type SnowflakeFields = {
+  accountId: string;
+  database?: string;
+  schema?: string;
+  warehouse?: string;
+};
+
+export type ProviderFields = PowerBIFields | GoogleAnalyticsFields | BigQueryFields | SnowflakeFields;
 
 export interface Integration {
   id: string;

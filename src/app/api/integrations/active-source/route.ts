@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { getAllIntegrations, setActiveSource } from "@/lib/integration-store";
 import type { IntegrationProvider } from "@/types/integration";
 
-const VALID_PROVIDERS: IntegrationProvider[] = ["google-analytics", "bigquery"];
+const VALID_PROVIDERS: IntegrationProvider[] = ["google-analytics", "bigquery", "snowflake"];
 
 export async function POST(request: Request) {
   const body = (await request.json()) as { provider?: string };
