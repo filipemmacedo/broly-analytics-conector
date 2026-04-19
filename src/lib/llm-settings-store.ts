@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { appEnv } from "@/lib/env";
-import type { LLMProvider, LLMSettings, PublicLLMSettings } from "@/types/llm";
+import type { LLMProvider, LLMSettings, LLMStatus, PublicLLMSettings } from "@/types/llm";
 
 // ─── Encryption (same AES-256-GCM pattern as integration-store) ────────────
 
@@ -41,6 +41,8 @@ type StoredLLMSettings = {
   model: string;
   encryptedApiKey: EncryptedField;
   configuredAt: string;
+  status?: LLMStatus;
+  lastTestedAt?: string | null;
 };
 
 function getStorePath(): string {
@@ -91,7 +93,9 @@ export function getLLMSettings(): LLMSettings | null {
     provider: stored.provider,
     model: stored.model,
     apiKey: decryptField(stored.encryptedApiKey),
-    configuredAt: stored.configuredAt
+    configuredAt: stored.configuredAt,
+    status: stored.status ?? "configured",
+    lastTestedAt: stored.lastTestedAt ?? null
   };
 }
 
@@ -103,7 +107,9 @@ export function getPublicLLMSettings(): PublicLLMSettings | null {
     provider: stored.provider,
     model: stored.model,
     apiKeyMasked: maskApiKey(rawKey),
-    configuredAt: stored.configuredAt
+    configuredAt: stored.configuredAt,
+    status: stored.status ?? "configured",
+    lastTestedAt: stored.lastTestedAt ?? null
   };
 }
 
@@ -114,19 +120,28 @@ export function saveLLMSettings(data: {
 }): PublicLLMSettings {
   const existing = readStore();
 
-  // If the incoming key is the masked sentinel, keep the existing encrypted key
+  // If the incoming key is the masked sentinel, keep the existing encrypted key and status
   let encryptedApiKey: EncryptedField;
+  let status: LLMStatus;
+  let lastTestedAt: string | null;
+
   if (isMaskedLLMKey(data.apiKey) && existing) {
     encryptedApiKey = existing.encryptedApiKey;
+    status = existing.status ?? "configured";
+    lastTestedAt = existing.lastTestedAt ?? null;
   } else {
     encryptedApiKey = encryptString(data.apiKey);
+    status = "configured";
+    lastTestedAt = null;
   }
 
   const record: StoredLLMSettings = {
     provider: data.provider,
     model: data.model,
     encryptedApiKey,
-    configuredAt: new Date().toISOString()
+    configuredAt: new Date().toISOString(),
+    status,
+    lastTestedAt
   };
 
   writeStore(record);
@@ -136,6 +151,18 @@ export function saveLLMSettings(data: {
     provider: data.provider,
     model: data.model,
     apiKeyMasked: maskApiKey(rawKey),
-    configuredAt: record.configuredAt
+    configuredAt: record.configuredAt,
+    status,
+    lastTestedAt
   };
+}
+
+export function updateLLMTestResult(success: boolean): void {
+  const existing = readStore();
+  if (!existing) return;
+  writeStore({
+    ...existing,
+    status: success ? "ok" : "error",
+    lastTestedAt: new Date().toISOString()
+  });
 }

@@ -8,7 +8,7 @@ const VALID_PROVIDERS = new Set<LLMProvider>(["anthropic", "openai", "google", "
 export async function GET() {
   const settings = getPublicLLMSettings();
   if (!settings) {
-    return NextResponse.json({ provider: null, model: null, apiKeyMasked: null, configuredAt: null });
+    return NextResponse.json({ provider: null, model: null, apiKeyMasked: null, configuredAt: null, status: null, lastTestedAt: null });
   }
   return NextResponse.json(settings);
 }
