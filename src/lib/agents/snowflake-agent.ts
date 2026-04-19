@@ -6,8 +6,9 @@
 // ⚠ Known limitation: sync mode has a 60s timeout. For long-running queries,
 // the upgrade path is async polling via GET /api/v2/statements/<handle>.
 
-import { extractChartData, extractTableData } from "@/lib/agents/ga4-agent";
-import type { VisualData } from "@/lib/types";
+import { callLLMForSummaryStream, extractChartData, extractTableData } from "@/lib/agents/ga4-agent";
+import type { StreamWriterFn, VisualData } from "@/lib/types";
+import { writeSseEvent } from "@/lib/utils";
 import type { LLMProvider } from "@/types/llm";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -652,7 +653,8 @@ export async function runSnowflakeAgentTurn(
   accountId: string,
   database: string,
   warehouse: string,
-  question: string
+  question: string,
+  writer?: StreamWriterFn
 ): Promise<SnowflakeAgentTurnResult> {
   const querySchema = buildRunSnowflakeQuerySchema(database);
 
@@ -674,6 +676,7 @@ export async function runSnowflakeAgentTurn(
   }
 
   // Step 2: Execute the SQL
+  if (writer) writeSseEvent(writer, { type: "progress", step: "querying" });
   const { sql } = result.toolCall.arguments as { sql: string };
   let columns: string[];
   let rows: Record<string, string | number | null>[];
@@ -750,6 +753,9 @@ export async function runSnowflakeAgentTurn(
     { role: "user", content: summaryInstruction }
   ];
 
-  const summary = await callLLMForSummary(llmConfig, summaryMessages);
+  if (writer) writeSseEvent(writer, { type: "progress", step: "summarizing" });
+  const summary = writer
+    ? await callLLMForSummaryStream(llmConfig, summaryMessages, writer)
+    : await callLLMForSummary(llmConfig, summaryMessages);
   return { summary: summary || rawTable, visual };
 }

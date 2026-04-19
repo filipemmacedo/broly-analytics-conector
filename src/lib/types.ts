@@ -123,9 +123,21 @@ export interface ChatMessage {
   content: string;
   createdAt: string;
   source?: SourceId;
-  status?: "complete" | "error";
+  status?: "complete" | "error" | "streaming";
   visual?: VisualData;
 }
+
+// ─── SSE streaming types ──────────────────────────────────────────────────────
+
+export type SseProgressStep = "planning" | "querying" | "summarizing";
+
+export type SseEvent =
+  | { type: "progress"; step: SseProgressStep }
+  | { type: "text"; delta: string }
+  | { type: "done"; session: ChatSession }
+  | { type: "error"; message: string };
+
+export type StreamWriterFn = (chunk: string) => void;
 
 export interface SessionState {
   id: string;

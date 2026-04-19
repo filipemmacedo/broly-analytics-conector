@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { ScanEye } from "lucide-react";
 
 export function Topbar({
   children,
@@ -13,7 +12,7 @@ export function Topbar({
   const brandContent = (
     <>
       <div className="brand-icon">
-        <ScanEye size={14} strokeWidth={2.5} />
+        <img alt="Broly logo" src="/broly.png" />
       </div>
       <div className="brand-mark">Broly</div>
     </>

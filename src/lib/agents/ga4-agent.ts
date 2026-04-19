@@ -3,7 +3,8 @@
 // Supports Anthropic, OpenAI, Google Gemini, and Mistral via raw fetch (no SDKs).
 
 import { formatMetadataForPrompt, getGA4Metadata, runGA4Report } from "@/lib/connectors/ga4";
-import type { ChartData, TableData, VisualData } from "@/lib/types";
+import type { ChartData, StreamWriterFn, TableData, VisualData } from "@/lib/types";
+import { writeSseEvent } from "@/lib/utils";
 import type { LLMProvider } from "@/types/llm";
 
 // ─── Shared types ─────────────────────────────────────────────────────────────
@@ -360,6 +361,156 @@ export async function callLLMWithTools(
   }
 }
 
+// ─── Streaming summarization helpers (one per provider) ──────────────────────
+
+async function* callAnthropicStream(config: LLMConfig, messages: Message[]): AsyncIterable<string> {
+  const systemMsg = messages.find((m) => m.role === "system");
+  const chatMessages = messages.filter((m) => m.role !== "system");
+  const body: Record<string, unknown> = {
+    model: config.model,
+    max_tokens: 512,
+    stream: true,
+    messages: chatMessages.map((m) => ({ role: m.role, content: m.content }))
+  };
+  if (systemMsg) body.system = systemMsg.content;
+
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": config.apiKey,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json"
+    },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok || !res.body) throw new Error(`Anthropic stream error ${res.status}`);
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const lines = buf.split("\n");
+    buf = lines.pop() ?? "";
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      const raw = line.slice(6).trim();
+      if (raw === "[DONE]") return;
+      try {
+        const parsed = JSON.parse(raw) as { type: string; delta?: { type: string; text?: string } };
+        if (parsed.type === "content_block_delta" && parsed.delta?.type === "text_delta" && parsed.delta.text) {
+          yield parsed.delta.text;
+        }
+      } catch { /* skip malformed lines */ }
+    }
+  }
+}
+
+async function* callOpenAIStream(config: LLMConfig, messages: Message[], endpoint: string): AsyncIterable<string> {
+  const res = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      model: config.model,
+      max_tokens: 512,
+      stream: true,
+      messages: messages.map((m) => ({ role: m.role, content: m.content }))
+    })
+  });
+  if (!res.ok || !res.body) throw new Error(`${config.provider} stream error ${res.status}`);
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const lines = buf.split("\n");
+    buf = lines.pop() ?? "";
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      const raw = line.slice(6).trim();
+      if (raw === "[DONE]") return;
+      try {
+        const parsed = JSON.parse(raw) as { choices: Array<{ delta: { content?: string } }> };
+        const chunk = parsed.choices[0]?.delta?.content;
+        if (chunk) yield chunk;
+      } catch { /* skip malformed lines */ }
+    }
+  }
+}
+
+async function* callGeminiStream(config: LLMConfig, messages: Message[]): AsyncIterable<string> {
+  const systemMsg = messages.find((m) => m.role === "system");
+  const chatMessages = messages.filter((m) => m.role !== "system");
+  const body: Record<string, unknown> = {
+    contents: chatMessages.map((m) => ({
+      role: m.role === "assistant" ? "model" : "user",
+      parts: [{ text: m.content }]
+    })),
+    generationConfig: { maxOutputTokens: 512 }
+  };
+  if (systemMsg) body.systemInstruction = { parts: [{ text: systemMsg.content }] };
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${config.model}:streamGenerateContent?alt=sse&key=${config.apiKey}`,
+    { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }
+  );
+  if (!res.ok || !res.body) throw new Error(`Gemini stream error ${res.status}`);
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const lines = buf.split("\n");
+    buf = lines.pop() ?? "";
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      const raw = line.slice(6).trim();
+      try {
+        const parsed = JSON.parse(raw) as { candidates: Array<{ content: { parts: Array<{ text?: string }> } }> };
+        const text = parsed.candidates[0]?.content?.parts?.[0]?.text;
+        if (text) yield text;
+      } catch { /* skip malformed lines */ }
+    }
+  }
+}
+
+export async function callLLMForSummaryStream(
+  config: LLMConfig,
+  messages: Message[],
+  writer: StreamWriterFn
+): Promise<string> {
+  let accumulated = "";
+
+  let stream: AsyncIterable<string>;
+  if (config.provider === "anthropic") {
+    stream = callAnthropicStream(config, messages);
+  } else if (config.provider === "openai") {
+    stream = callOpenAIStream(config, messages, "https://api.openai.com/v1/chat/completions");
+  } else if (config.provider === "mistral") {
+    stream = callOpenAIStream(config, messages, "https://api.mistral.ai/v1/chat/completions");
+  } else {
+    stream = callGeminiStream(config, messages);
+  }
+
+  for await (const chunk of stream) {
+    accumulated += chunk;
+    writeSseEvent(writer, { type: "text", delta: chunk });
+  }
+
+  return accumulated;
+}
+
 // ─── Summarization (plain LLM call, no tools) ────────────────────────────────
 
 async function callLLMForSummary(config: LLMConfig, messages: Message[]): Promise<string> {
@@ -706,7 +857,8 @@ export async function runGA4AgentTurn(
   llmConfig: LLMConfig,
   ga4AccessToken: string,
   propertyId: string,
-  question: string
+  question: string,
+  writer?: StreamWriterFn
 ): Promise<GA4AgentTurnResult> {
   const metadata = await getGA4Metadata(ga4AccessToken, propertyId);
   const metadataBlock = formatMetadataForPrompt(metadata);
@@ -744,6 +896,7 @@ export async function runGA4AgentTurn(
 
   const dateRange = params.dateRanges?.[0] ?? { startDate: "28daysAgo", endDate: "today" };
 
+  if (writer) writeSseEvent(writer, { type: "progress", step: "querying" });
   const { table: rawTable, rows: rawRows } = await runGA4Report(ga4AccessToken, propertyId, {
     metrics: params.metrics,
     dimensions: params.dimensions,
@@ -789,7 +942,10 @@ export async function runGA4AgentTurn(
     }
   ];
 
-  const summary = await callLLMForSummary(llmConfig, summaryMessages);
+  if (writer) writeSseEvent(writer, { type: "progress", step: "summarizing" });
+  const summary = writer
+    ? await callLLMForSummaryStream(llmConfig, summaryMessages, writer)
+    : await callLLMForSummary(llmConfig, summaryMessages);
 
   // Step 7: Build visual payload
   const visual: VisualData | undefined = chartData

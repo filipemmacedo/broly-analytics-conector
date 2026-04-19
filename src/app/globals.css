@@ -110,9 +110,12 @@ button {
   width: 28px;
   height: 28px;
   border-radius: 8px;
-  background: linear-gradient(135deg, var(--primary), var(--primary-container));
   color: #fff8f2;
   box-shadow: 0 4px 12px rgba(122, 52, 21, 0.22);
+}
+
+.brand-icon img {
+  width: 16px;
 }
 
 .brand-mark {
@@ -1069,6 +1072,30 @@ button {
 @keyframes typing-bounce {
   0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
   30% { transform: translateY(-6px); opacity: 1; }
+}
+
+.typing-step-label {
+  font-size: 11px;
+  color: var(--secondary);
+  opacity: 0.7;
+  margin-left: 4px;
+  font-style: italic;
+}
+
+/* Blinking cursor shown at the end of a streaming assistant message */
+.streaming-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background: currentColor;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: cursor-blink 0.9s step-end infinite;
+}
+
+@keyframes cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
 }
 
 /* ── Message bubbles ────────────────────────────── */
