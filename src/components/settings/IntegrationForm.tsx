@@ -148,6 +148,48 @@ function GoogleAnalyticsFields({
   );
 }
 
+// ─── Snowflake ─────────────────────────────────────────────────────────────
+
+function SnowflakeFormFields({
+  values,
+  errors,
+  onChange
+}: {
+  values: Record<string, string>;
+  errors: FormErrors;
+  onChange: (key: string, value: string) => void;
+}) {
+  return (
+    <>
+      <label className="form-field">
+        <span>Account Identifier</span>
+        <input
+          className={errors.accountId ? "error" : ""}
+          onChange={(e) => onChange("accountId", e.target.value)}
+          placeholder="xy12345.us-east-1"
+          type="text"
+          value={values.accountId ?? ""}
+        />
+        {errors.accountId ? <span className="field-error">{errors.accountId}</span> : null}
+        <span className="form-hint">Your Snowflake account identifier, e.g. <code>xy12345.us-east-1</code> or <code>orgname-accountname</code>.</span>
+      </label>
+
+      <label className="form-field">
+        <span>PAT Token</span>
+        <input
+          className={errors.patToken ? "error" : ""}
+          onChange={(e) => onChange("patToken", e.target.value)}
+          placeholder={values.patToken === MASKED_SENTINEL ? MASKED_SENTINEL : "Snowflake Programmatic Access Token"}
+          type="password"
+          value={values.patToken ?? ""}
+        />
+        {errors.patToken ? <span className="field-error">{errors.patToken}</span> : null}
+        <span className="form-hint">Generate a PAT in Snowflake under Admin &gt; Security &gt; Programmatic Access Tokens.</span>
+      </label>
+    </>
+  );
+}
+
 // ─── BigQuery ──────────────────────────────────────────────────────────────
 
 function BigQueryFields({
@@ -238,6 +280,13 @@ function buildAuthConfig(provider: IntegrationProvider, values: Record<string, s
     };
   }
 
+  if (provider === "snowflake") {
+    return {
+      authType: "api-key",
+      apiKey: values.patToken ?? ""
+    };
+  }
+
   return null;
 }
 
@@ -260,6 +309,9 @@ function buildProviderFields(provider: IntegrationProvider, values: Record<strin
       propertyName: values.propertyName ?? "",
       datasetId: values.datasetId ?? ""
     };
+  }
+  if (provider === "snowflake") {
+    return { accountId: values.accountId ?? "" };
   }
   return {};
 }
@@ -295,6 +347,12 @@ function validate(provider: IntegrationProvider, displayName: string, values: Re
       errors.clientSecret = "OAuth Client Secret is required";
   }
 
+  if (provider === "snowflake") {
+    if (!values.accountId?.trim()) errors.accountId = "Account identifier is required";
+    if (!values.patToken?.trim() || values.patToken === MASKED_SENTINEL)
+      errors.patToken = "PAT token is required";
+  }
+
   return errors;
 }
 
@@ -325,6 +383,9 @@ function seedValues(provider: IntegrationProvider, existing: PublicIntegration |
   if (ac.authType === "oauth2-code-flow") {
     values.clientId = ac.clientId ?? "";
     values.clientSecret = MASKED_SENTINEL;
+  }
+  if (ac.authType === "api-key") {
+    values.patToken = MASKED_SENTINEL;
   }
 
   return values;
@@ -373,7 +434,7 @@ export function IntegrationForm({ provider, existing, onSave, onCancel }: Props)
         <input
           className={errors.displayName ? "error" : ""}
           onChange={(e) => setDisplayName(e.target.value)}
-          placeholder="My Power BI connection"
+          placeholder="My Data connection"
           type="text"
           value={displayName}
         />
@@ -383,6 +444,7 @@ export function IntegrationForm({ provider, existing, onSave, onCancel }: Props)
       {provider === "powerbi" ? <PowerBIFields errors={errors} onChange={onChange} values={values} /> : null}
       {provider === "google-analytics" ? <GoogleAnalyticsFields errors={errors} onChange={onChange} values={values} /> : null}
       {provider === "bigquery" ? <BigQueryFields errors={errors} onChange={onChange} values={values} /> : null}
+      {provider === "snowflake" ? <SnowflakeFormFields errors={errors} onChange={onChange} values={values} /> : null}
 
       <div className="form-actions">
         <button className="btn-primary" disabled={isSaving} type="submit">

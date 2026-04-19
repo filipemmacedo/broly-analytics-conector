@@ -2,7 +2,7 @@
 
 Broly Analytics Agent is a Next.js proof of concept for a chat-first analytics workspace. The app lets a user connect analytics data sources, choose the active assets they want to query, and ask natural-language questions from a single dashboard.
 
-The current product direction is centered on Google Analytics 4. GA4 questions are handled by an LLM-powered analytics agent that can inspect available GA4 metadata, call the GA4 Data API, and turn the returned report into a conversational answer.
+The app supports Google Analytics 4, BigQuery, and Snowflake as data sources. Each source is powered by an LLM analytics agent that inspects available metadata, runs queries against the data source, and turns the results into conversational answers with optional chart or table visuals.
 
 ## What The App Does
 
@@ -10,8 +10,10 @@ The current product direction is centered on Google Analytics 4. GA4 questions a
 - Stores chat sessions locally on disk so conversations survive page refreshes.
 - Stores integration credentials locally with encrypted secret fields.
 - Supports Google Analytics 4 OAuth connection, token refresh, property discovery, property selection, and Data API reporting.
+- Supports BigQuery connection via Google OAuth, dataset selection, and SQL query execution.
+- Supports Snowflake connection via Programmatic Access Token (PAT), database selection, and SQL query execution across all schemas.
 - Supports LLM provider settings for Anthropic, OpenAI, Google, and Mistral.
-- Shows Google Analytics as the active integration while BigQuery and Power BI remain hidden for later work.
+- Routes natural-language questions to the correct data source agent based on the active integration.
 
 ## Tech Stack
 
@@ -240,6 +242,119 @@ When you ask for a single aggregate value or a conceptual question, Broly replie
 - `How does GA4 calculate engagement rate?`
 - `Total purchase revenue for the last 30 days`
 
+## Connect Snowflake
+
+Snowflake uses a Programmatic Access Token (PAT) — a static secret you generate in the Snowflake UI. There is no OAuth redirect. The token is pasted directly into the integration form.
+
+### 1. Generate a PAT Token in Snowflake
+
+1. Sign in to your Snowflake account.
+2. Click your username in the top-right corner and open **My Profile**.
+3. Scroll to **Programmatic Access Tokens** and click **Generate Token**.
+4. Give the token a name (e.g. `broly-local`) and an expiry.
+5. Copy the generated token — it is only shown once.
+
+The role associated with the token must have the following privileges on the database you want to query:
+
+```sql
+GRANT USAGE ON DATABASE     <your_database>           TO ROLE <your_role>;
+GRANT USAGE ON SCHEMA       <your_database>.<schema>  TO ROLE <your_role>;
+GRANT SELECT ON ALL TABLES  IN SCHEMA <your_database>.<schema> TO ROLE <your_role>;
+```
+
+Without these grants, Broly can connect but will report that no tables exist.
+
+### 2. Find Your Account Identifier
+
+The account identifier is the hostname prefix used to reach your Snowflake account. Common formats:
+
+| Format | Example |
+|---|---|
+| `orgname-accountname` | `myorg-myaccount` |
+| `locator.region` | `xy12345.us-east-1` |
+| `locator` | `xy12345` |
+
+You can find it in **Admin > Accounts** in the Snowflake UI, or from the URL you use to log in:
+`https://<account-identifier>.snowflakecomputing.com`.
+
+### 3. Save The Snowflake Credentials In Broly
+
+1. Start Broly with `npm run dev`.
+2. Open `http://localhost:3000/settings/integrations`.
+3. Find **Snowflake** and click **Set up**.
+4. Enter your **Account Identifier** (e.g. `xy12345.us-east-1`).
+5. Paste the **PAT Token**.
+6. Click **Save connection**.
+
+### 4. Test The Connection
+
+Click **Test connection** on the Snowflake integration card. This runs `SELECT CURRENT_TIMESTAMP()` against your account to confirm the token and account identifier are valid.
+
+### 5. Select A Database
+
+1. Open the **Data Sources** side panel on the dashboard.
+2. Click the **Snowflake** row to expand it.
+3. Choose the database you want to query from the dropdown.
+
+The selected database is saved automatically. You can switch databases here at any time without going back to the integration settings.
+
+### 6. Optional — Select A Warehouse
+
+If your account or role has no default warehouse configured, queries will fail unless you select one explicitly.
+
+1. Go to `http://localhost:3000/settings/integrations`.
+2. Open the **Snowflake** card.
+3. Choose a warehouse from the **Warehouse** dropdown.
+4. Click **Save selection**.
+
+If your role already has a default warehouse, this step is optional — leave it set to **Account default**.
+
+### 7. Ask Snowflake Questions
+
+Return to the dashboard at `http://localhost:3000`, make sure Snowflake is the active source in the Data Sources panel, and ask questions such as:
+
+- `What data is here?`
+- `Give me 5 customer names.`
+- `Show total orders by day for the last 30 days.`
+- `Top 10 products by revenue.`
+- `How many orders were placed this year?`
+
+Broly automatically discovers the tables and columns in your selected database, sends that schema to the LLM, generates a Snowflake SQL query, executes it, and summarizes the result.
+
+## Snowflake Troubleshooting
+
+### Authentication failed — JWT subject claim empty
+
+The integration was saved with `KEYPAIR_JWT` as the token type. Broly uses `PROGRAMMATIC_ACCESS_TOKEN`, which is required for PAT tokens. This error should not appear on a fresh setup; if it does, delete and re-create the integration.
+
+### No tables found in database
+
+The PAT token's role can see the database but has no USAGE on any schema or SELECT on any table. Run the grants listed in step 1 above, then ask again.
+
+### `Object '...' does not exist or not authorized`
+
+The table exists but the role cannot SELECT from it, or the object name is wrong. Verify grants in the Snowflake UI by running `SHOW TERSE TABLES IN DATABASE <db>` with the same role.
+
+### `fetch failed` / `ENOTFOUND`
+
+Broly cannot reach `<account-identifier>.snowflakecomputing.com`. Check that:
+
+- the account identifier format is correct (see step 2),
+- your network allows outbound HTTPS to `*.snowflakecomputing.com`,
+- the Snowflake account is active and not suspended.
+
+### Warehouse required error
+
+Your role has no default warehouse. Select a warehouse in **Settings > Integrations > Snowflake** (see step 6).
+
+### PAT token expired
+
+Snowflake PAT tokens have a fixed expiry. Regenerate the token in **My Profile > Programmatic Access Tokens**, then update it in **Settings > Integrations > Snowflake > Edit**.
+
+### No data returned for date-range questions
+
+Your data may be from a historical time period. Broly will automatically detect this and retry the query using the actual date range in your data. If results still appear empty, ask `What is the earliest and latest date in <table>?` to confirm the data exists.
+
 ## GA4 Troubleshooting
 
 ### OAuth error: `not_configured`
@@ -300,7 +415,7 @@ Do not commit real `data/` files containing credentials or chat history.
 - Credentials are encrypted locally, but there is no external secret manager integration yet.
 - GA4 reporting depends on the selected LLM choosing valid metrics and dimensions, although property metadata is provided to reduce invalid requests.
 - Cross-source joins and reconciliation are not implemented.
-- BigQuery and Power BI connector code exists, but both integrations are hidden from the UI until that connection work resumes.
+- Power BI connector code exists but is hidden from the UI until that connection work resumes.
 
 ## Useful Commands
 
@@ -325,3 +440,14 @@ The BigQuery connector uses the **synchronous queries API** (`POST /projects/{id
 **When to migrate:** If users regularly hit timeouts, migrate to the **BigQuery Jobs API** (`POST /projects/{id}/jobs` with a `configuration.query` body). The Jobs API is asynchronous — it returns a `jobId` immediately, which you then poll until complete. This adds latency for fast queries but removes the timeout ceiling for slow ones.
 
 The relevant file is `src/lib/agents/bigquery-agent.ts` — specifically the `executeBigQueryQuery` function.
+
+### Snowflake Connector — Synchronous Query Timeout
+
+The Snowflake connector uses the **Snowflake SQL API v2** in synchronous mode (`POST /api/v2/statements` with `"timeout": 60`). This has the following constraints:
+
+- **60s timeout** — queries that take longer will fail. The LLM is instructed to always include `LIMIT` clauses, but complex aggregations over large tables may still exceed this.
+- **Max 20 rows returned** — the connector caps results at 20 rows per query.
+- **PAT token expiry** — PAT tokens have a fixed expiry date set at generation time. If a token expires, all queries fail until the token is regenerated and updated in the integration settings.
+- **Schema metadata via `SHOW TERSE TABLES`** — Broly discovers tables using `SHOW TERSE TABLES IN DATABASE`, which only shows objects the PAT token's role has been explicitly granted access to.
+
+**When to migrate:** If users regularly hit the 60s timeout, migrate to async polling using `GET /api/v2/statements/<handle>`. The relevant file is `src/lib/agents/snowflake-agent.ts` — specifically the `executeSnowflakeQuery` function.

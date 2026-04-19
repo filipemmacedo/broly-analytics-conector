@@ -1,4 +1,4 @@
-export type SourceId = "bigquery" | "powerbi" | "ga4";
+export type SourceId = "bigquery" | "powerbi" | "ga4" | "snowflake";
 export type ConnectionStatus = "disconnected" | "connected" | "error";
 
 export interface ColumnMetadata {

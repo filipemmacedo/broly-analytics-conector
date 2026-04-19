@@ -2,6 +2,7 @@ import type { AuthConfig, IntegrationProvider, ProviderFields } from "@/types/in
 import * as bigquery from "@/lib/providers/bigquery";
 import * as googleAnalytics from "@/lib/providers/google-analytics";
 import * as powerbi from "@/lib/providers/powerbi";
+import * as snowflake from "@/lib/providers/snowflake";
 
 type ProviderAdapter = {
   testConnection: (authConfig: AuthConfig, providerFields: ProviderFields, integrationId?: string) => Promise<{ success: boolean; error?: string }>;
@@ -10,7 +11,8 @@ type ProviderAdapter = {
 const registry: Record<IntegrationProvider, ProviderAdapter> = {
   powerbi,
   "google-analytics": googleAnalytics,
-  bigquery
+  bigquery,
+  snowflake
 };
 
 export function getProviderAdapter(provider: IntegrationProvider): ProviderAdapter {
