@@ -6,7 +6,7 @@ import { IntegrationCard } from "@/components/settings/IntegrationCard";
 import type { IntegrationProvider, PublicIntegration } from "@/types/integration";
 import { useIntegrations } from "@/context/IntegrationContext";
 
-const PROVIDERS: IntegrationProvider[] = ["google-analytics", "bigquery"];
+const PROVIDERS: IntegrationProvider[] = ["google-analytics", "bigquery", "snowflake"];
 
 export default function IntegrationsPage() {
   const [integrations, setIntegrations] = useState<PublicIntegration[]>([]);
