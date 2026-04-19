@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
 
 import { runBigQueryAgentTurn } from "@/lib/agents/bigquery-agent";
+import { runSnowflakeAgentTurn } from "@/lib/agents/snowflake-agent";
 import { getActiveIntegration } from "@/lib/integration-store";
 import { runGA4AgentTurn } from "@/lib/agents/ga4-agent";
 import { getFreshAccessToken as getBQFreshToken } from "@/lib/providers/bigquery";
 import { getFreshAccessToken as getGA4FreshToken } from "@/lib/providers/google-analytics";
-import type { BigQueryFields, GoogleAnalyticsFields } from "@/types/integration";
+import type { ApiKeyAuthConfig, BigQueryFields, GoogleAnalyticsFields, SnowflakeFields } from "@/types/integration";
 import type { ChatMessage, SessionState, SourceId } from "@/lib/types";
 import type { LLMProvider } from "@/types/llm";
 
@@ -187,6 +188,81 @@ export async function handleQuestion(session: SessionState, question: string, co
         session,
         error instanceof Error ? error.message : "The BigQuery query failed. Try rephrasing or check your connection.",
         "bigquery",
+        "error"
+      );
+    }
+
+    return session;
+  }
+
+  // ─── Snowflake path ───────────────────────────────────────────────────────
+
+  if (activeIntegration.provider === "snowflake") {
+    const fields = activeIntegration.providerFields as SnowflakeFields;
+    const { accountId, database, warehouse = "" } = fields;
+
+    if (!accountId) {
+      pushAssistantMessage(
+        session,
+        "Snowflake account identifier is not configured. Go to Settings > Integrations > Snowflake to set it up.",
+        "snowflake",
+        "error"
+      );
+      return session;
+    }
+
+    if (!database) {
+      pushAssistantMessage(
+        session,
+        "No Snowflake database selected. Go to Settings > Integrations > Snowflake to select a database.",
+        "snowflake",
+        "error"
+      );
+      return session;
+    }
+
+    const auth = activeIntegration.authConfig as ApiKeyAuthConfig;
+    const token = auth?.apiKey;
+
+    if (!token) {
+      pushAssistantMessage(
+        session,
+        "Snowflake PAT token is missing. Go to Settings > Integrations > Snowflake to set up credentials.",
+        "snowflake",
+        "error"
+      );
+      return session;
+    }
+
+    try {
+      const { summary, visual } = await runSnowflakeAgentTurn(
+        llmConfig,
+        token,
+        accountId,
+        database,
+        warehouse,
+        question
+      );
+      session.chat.push({
+        id: randomUUID(),
+        role: "assistant",
+        content: summary,
+        createdAt: new Date().toISOString(),
+        source: "snowflake",
+        status: "complete",
+        ...(visual ? { visual } : {})
+      });
+    } catch (error) {
+      console.error("Snowflake query failed", {
+        question,
+        accountId,
+        database,
+        message: error instanceof Error ? error.message : String(error)
+      });
+      pushAssistantMessage(
+        session,
+        error instanceof Error ? error.message : "The Snowflake query failed. Try rephrasing or check your connection.",
+        "snowflake",
         "error"
       );
     }

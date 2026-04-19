@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { BigQueryPropertySelector } from "@/components/settings/BigQueryPropertySelector";
 import { GA4PropertySelector } from "@/components/settings/GA4PropertySelector";
+import { SnowflakeDatabaseSelector } from "@/components/settings/SnowflakeDatabaseSelector";
 import { IntegrationForm } from "@/components/settings/IntegrationForm";
 import { ConnectionStatusBadge } from "@/components/ui/ConnectionStatusBadge";
 import type { AuthConfig, IntegrationProvider, OAuth2CodeFlowAuthConfig, PublicIntegration } from "@/types/integration";
@@ -11,13 +12,15 @@ import type { AuthConfig, IntegrationProvider, OAuth2CodeFlowAuthConfig, PublicI
 const PROVIDER_LABELS: Record<IntegrationProvider, string> = {
   powerbi: "Power BI",
   "google-analytics": "Google Analytics",
-  bigquery: "BigQuery"
+  bigquery: "BigQuery",
+  snowflake: "Snowflake"
 };
 
 const PROVIDER_DESCRIPTIONS: Record<IntegrationProvider, string> = {
   powerbi: "Connect your Power BI workspace to query datasets, dashboards, and reports.",
   "google-analytics": "Connect your GA4 property to analyse web traffic and user behaviour.",
-  bigquery: "Connect your BigQuery project to query datasets and run SQL analytics."
+  bigquery: "Connect your BigQuery project to query datasets and run SQL analytics.",
+  snowflake: "Connect your Snowflake data warehouse to query tables in natural language."
 };
 
 type TestState = "idle" | "testing" | "success" | "error";
@@ -196,6 +199,17 @@ export function IntegrationCard({ provider, integration, activeIntegration, onRe
         return (
           <BigQueryPropertySelector
             currentPropertyId={currentPropertyId}
+            onSelected={onRefresh}
+          />
+        );
+      })()}
+
+      {(() => {
+        if (provider !== "snowflake" || !integration) return null;
+        const pf = integration.providerFields as { warehouse?: string } | undefined;
+        return (
+          <SnowflakeDatabaseSelector
+            currentWarehouse={pf?.warehouse}
             onSelected={onRefresh}
           />
         );
