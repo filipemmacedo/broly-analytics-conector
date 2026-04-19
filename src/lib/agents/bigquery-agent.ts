@@ -1,12 +1,14 @@
 // BigQuery analytics agent — translates natural-language questions into BigQuery SQL
 // using tool/function calling, then summarizes results in natural language.
 // Supports Anthropic, OpenAI, Google Gemini, and Mistral via raw fetch (no SDKs).
-// Dataset is hardcoded to `ga4analytics`. Uses the synchronous queries API.
+// Dataset is read from the integration's providerFields.datasetId. Uses the synchronous queries API.
 //
 // ⚠ Known limitation: sync queries API has a ~20s timeout. Not suitable for large
 // datasets. Migrate to the BigQuery Jobs API (POST /projects/{id}/jobs) when queries
 // exceed this limit. See README for details.
 
+import { extractChartData, extractTableData } from "@/lib/agents/ga4-agent";
+import type { VisualData } from "@/lib/types";
 import type { LLMProvider } from "@/types/llm";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -36,27 +38,29 @@ interface Message {
 
 const RUN_BQ_QUERY_TOOL_NAME = "runBigQueryQuery";
 
-const RUN_BQ_QUERY_SCHEMA = {
-  name: RUN_BQ_QUERY_TOOL_NAME,
-  description:
-    "Execute a read-only BigQuery SQL query against the GA4 export dataset. " +
-    "Use this to answer analytics questions with real data from BigQuery. " +
-    "Always use standard SQL (useLegacySql is false). Always include a LIMIT clause.",
-  parameters: {
-    type: "object",
-    properties: {
-      sql: {
-        type: "string",
-        description:
-          "A read-only SQL query (SELECT or WITH only). Must reference tables as " +
-          "`PROJECT_ID.ga4analytics.events_*` using the wildcard for all date partitions, " +
-          "or a specific date table like `PROJECT_ID.ga4analytics.events_20240101`. " +
-          "Always include LIMIT (max 20 rows). Never use INSERT, UPDATE, DELETE, MERGE, DROP, ALTER, TRUNCATE, or CREATE."
-      }
-    },
-    required: ["sql"]
-  }
-};
+function buildRunBqQuerySchema(projectId: string, datasetId: string) {
+  return {
+    name: RUN_BQ_QUERY_TOOL_NAME,
+    description:
+      "Execute a read-only BigQuery SQL query against the GA4 export dataset. " +
+      "Use this to answer analytics questions with real data from BigQuery. " +
+      "Always use standard SQL (useLegacySql is false). Always include a LIMIT clause.",
+    parameters: {
+      type: "object",
+      properties: {
+        sql: {
+          type: "string",
+          description:
+            `A read-only SQL query (SELECT or WITH only). Must reference tables as ` +
+            `\`${projectId}.${datasetId}.events_*\` using the wildcard for all date partitions, ` +
+            `or a specific date table like \`${projectId}.${datasetId}.events_20240101\`. ` +
+            "Always include LIMIT (max 20 rows). Never use INSERT, UPDATE, DELETE, MERGE, DROP, ALTER, TRUNCATE, or CREATE."
+        }
+      },
+      required: ["sql"]
+    }
+  };
+}
 
 // ─── Read-only query guard ─────────────────────────────────────────────────────
 
@@ -141,32 +145,41 @@ function formatRowsAsText(columns: string[], rows: Record<string, string | numbe
 
 // ─── System prompt ────────────────────────────────────────────────────────────
 
-function buildSystemPrompt(projectId: string, propertyName: string): string {
+function buildSystemPrompt(projectId: string, datasetId: string, propertyName: string): string {
   const today = new Date().toISOString().split("T")[0];
   return `You are an analytics assistant with access to a BigQuery GA4 export dataset.
 Today's date is ${today}.
 
 ACTIVE SOURCE: BigQuery
   GCP Project: ${projectId}
-  Dataset: ga4analytics (hardcoded — do not change this)
+  Dataset: ${datasetId}
   GA4 Property: ${propertyName}
 
 QUERYING:
 - Use the runBigQueryQuery tool to fetch data from BigQuery
-- Table pattern: \`${projectId}.ga4analytics.events_*\` (wildcard for all dates)
-- For a specific date: \`${projectId}.ga4analytics.events_YYYYMMDD\`
+- Table pattern: \`${projectId}.${datasetId}.events_*\` (wildcard for all dates)
+- For a specific date: \`${projectId}.${datasetId}.events_YYYYMMDD\`
 - Always use standard SQL (useLegacySql: false)
 - Always include a LIMIT clause (max 20 rows)
 - For date filtering use: WHERE _TABLE_SUFFIX BETWEEN 'YYYYMMDD' AND 'YYYYMMDD'
   or: WHERE _TABLE_SUFFIX >= FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY))
 
 COMMON PATTERNS:
-  Event counts:       SELECT event_name, COUNT(*) as count FROM \`${projectId}.ga4analytics.events_*\` GROUP BY event_name ORDER BY count DESC LIMIT 10
-  Sessions by date:   SELECT event_date, COUNT(DISTINCT (SELECT value.int_value FROM UNNEST(event_params) WHERE key = 'ga_session_id')) as sessions FROM \`${projectId}.ga4analytics.events_*\` GROUP BY event_date ORDER BY event_date DESC LIMIT 30
-  Recent events:      SELECT event_date, event_name, COUNT(*) as count FROM \`${projectId}.ga4analytics.events_*\` WHERE _TABLE_SUFFIX >= FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)) GROUP BY event_date, event_name ORDER BY event_date DESC, count DESC LIMIT 20
+  Event counts:       SELECT event_name, COUNT(*) as count FROM \`${projectId}.${datasetId}.events_*\` GROUP BY event_name ORDER BY count DESC LIMIT 10
+  Sessions by date:   SELECT event_date, COUNT(DISTINCT (SELECT value.int_value FROM UNNEST(event_params) WHERE key = 'ga_session_id')) as sessions FROM \`${projectId}.${datasetId}.events_*\` GROUP BY event_date ORDER BY event_date DESC LIMIT 30
+  Recent events:      SELECT event_date, event_name, COUNT(*) as count FROM \`${projectId}.${datasetId}.events_*\` WHERE _TABLE_SUFFIX >= FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)) GROUP BY event_date, event_name ORDER BY event_date DESC, count DESC LIMIT 20
 
 DO NOT use the GA4 Data API or runGA4Report — use SQL only.
-For conceptual questions, answer from your knowledge without calling any tool.`;
+For conceptual questions, answer from your knowledge without calling any tool.
+
+CHART RENDERING RULE:
+- When the query includes a date column, ALWAYS alias it as \`date\`: SELECT event_date AS date, ...
+- This alias is REQUIRED — without it, no chart will render.
+- Include \`event_date AS date\` whenever the user asks about trends, by day, over time, or across a date range.
+
+TABLE RENDERING RULE:
+- A table will render automatically when the result has a non-date dimension (e.g. country, channel, device).
+- When a chart or table will render, keep your final summary to 1–2 sentences. Do NOT narrate individual rows or data points.`;
 }
 
 // ─── Retry helper ─────────────────────────────────────────────────────────────
@@ -186,14 +199,14 @@ async function fetchWithRetry(url: string, init: RequestInit, maxRetries = 3): P
 
 // ─── LLM provider dispatchers ─────────────────────────────────────────────────
 
-async function callAnthropic(config: LLMConfig, messages: Message[]): Promise<LLMToolResult> {
+async function callAnthropic(config: LLMConfig, messages: Message[], schema: ReturnType<typeof buildRunBqQuerySchema>): Promise<LLMToolResult> {
   const systemMsg = messages.find((m) => m.role === "system");
   const chatMessages = messages.filter((m) => m.role !== "system");
 
   const body: Record<string, unknown> = {
     model: config.model,
     max_tokens: 1024,
-    tools: [{ name: RUN_BQ_QUERY_SCHEMA.name, description: RUN_BQ_QUERY_SCHEMA.description, input_schema: RUN_BQ_QUERY_SCHEMA.parameters }],
+    tools: [{ name: schema.name, description: schema.description, input_schema: schema.parameters }],
     messages: chatMessages.map((m) => ({ role: m.role, content: m.content }))
   };
   if (systemMsg) body.system = systemMsg.content;
@@ -222,11 +235,11 @@ async function callAnthropic(config: LLMConfig, messages: Message[]): Promise<LL
   return { text: textBlock?.type === "text" ? textBlock.text : "" };
 }
 
-async function callOpenAI(config: LLMConfig, messages: Message[]): Promise<LLMToolResult> {
+async function callOpenAI(config: LLMConfig, messages: Message[], schema: ReturnType<typeof buildRunBqQuerySchema>): Promise<LLMToolResult> {
   const body = {
     model: config.model,
     max_tokens: 1024,
-    tools: [{ type: "function", function: RUN_BQ_QUERY_SCHEMA }],
+    tools: [{ type: "function", function: schema }],
     tool_choice: "auto",
     messages: messages.map((m) => ({ role: m.role, content: m.content }))
   };
@@ -254,13 +267,13 @@ async function callOpenAI(config: LLMConfig, messages: Message[]): Promise<LLMTo
   return { text: msg?.content ?? "" };
 }
 
-async function callGemini(config: LLMConfig, messages: Message[]): Promise<LLMToolResult> {
+async function callGemini(config: LLMConfig, messages: Message[], schema: ReturnType<typeof buildRunBqQuerySchema>): Promise<LLMToolResult> {
   const systemMsg = messages.find((m) => m.role === "system");
   const chatMessages = messages.filter((m) => m.role !== "system");
 
   const body: Record<string, unknown> = {
     contents: chatMessages.map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] })),
-    tools: [{ functionDeclarations: [RUN_BQ_QUERY_SCHEMA] }],
+    tools: [{ functionDeclarations: [schema] }],
     generationConfig: { maxOutputTokens: 1024 }
   };
   if (systemMsg) body.systemInstruction = { parts: [{ text: systemMsg.content }] };
@@ -289,11 +302,11 @@ async function callGemini(config: LLMConfig, messages: Message[]): Promise<LLMTo
   return { text: textPart?.text ?? "" };
 }
 
-async function callMistral(config: LLMConfig, messages: Message[]): Promise<LLMToolResult> {
+async function callMistral(config: LLMConfig, messages: Message[], schema: ReturnType<typeof buildRunBqQuerySchema>): Promise<LLMToolResult> {
   const body = {
     model: config.model,
     max_tokens: 1024,
-    tools: [{ type: "function", function: RUN_BQ_QUERY_SCHEMA }],
+    tools: [{ type: "function", function: schema }],
     tool_choice: "auto",
     messages: messages.map((m) => ({ role: m.role, content: m.content }))
   };
@@ -322,12 +335,12 @@ async function callMistral(config: LLMConfig, messages: Message[]): Promise<LLMT
   return { text: msg?.content ?? "" };
 }
 
-async function callLLMWithTools(config: LLMConfig, messages: Message[]): Promise<LLMToolResult> {
+async function callLLMWithTools(config: LLMConfig, messages: Message[], schema: ReturnType<typeof buildRunBqQuerySchema>): Promise<LLMToolResult> {
   switch (config.provider) {
-    case "anthropic": return callAnthropic(config, messages);
-    case "openai":    return callOpenAI(config, messages);
-    case "google":    return callGemini(config, messages);
-    case "mistral":   return callMistral(config, messages);
+    case "anthropic": return callAnthropic(config, messages, schema);
+    case "openai":    return callOpenAI(config, messages, schema);
+    case "google":    return callGemini(config, messages, schema);
+    case "mistral":   return callMistral(config, messages, schema);
   }
 }
 
@@ -384,16 +397,19 @@ async function callLLMForSummary(config: LLMConfig, messages: Message[]): Promis
 
 export interface BigQueryAgentTurnResult {
   summary: string;
+  visual?: VisualData;
 }
 
 export async function runBigQueryAgentTurn(
   llmConfig: LLMConfig,
   accessToken: string,
   projectId: string,
+  datasetId: string,
   propertyName: string,
   question: string
 ): Promise<BigQueryAgentTurnResult> {
-  const systemPrompt = buildSystemPrompt(projectId, propertyName);
+  const schema = buildRunBqQuerySchema(projectId, datasetId);
+  const systemPrompt = buildSystemPrompt(projectId, datasetId, propertyName);
 
   const messages: Message[] = [
     { role: "system", content: systemPrompt },
@@ -401,7 +417,7 @@ export async function runBigQueryAgentTurn(
   ];
 
   // Step 1: Ask LLM — it either calls the tool or answers directly
-  const result = await callLLMWithTools(llmConfig, messages);
+  const result = await callLLMWithTools(llmConfig, messages, schema);
 
   if (!result.toolCall) {
     return { summary: result.text || "I couldn't generate a response for that question." };
@@ -412,14 +428,30 @@ export async function runBigQueryAgentTurn(
   const { columns, rows } = await executeBigQueryQuery(accessToken, projectId, sql);
   const rawTable = formatRowsAsText(columns, rows);
 
-  // Step 3: Summarize
+  // Step 3: Detect chart / table from query results
+  const coercedRows = rows.map((row) =>
+    Object.fromEntries(columns.map((col) => [col, String(row[col] ?? "")]))
+  );
+  const chartData = extractChartData(coercedRows);
+  const tableData = chartData ? undefined : extractTableData(coercedRows);
+  const visual: VisualData | undefined = chartData
+    ? { type: "chart", data: chartData }
+    : tableData
+      ? { type: "table", data: tableData }
+      : undefined;
+
+  // Step 4: Summarize — short prompt when a chart will render
+  const summaryInstruction = chartData
+    ? "A line chart will be rendered automatically for this data. Respond with only a 1–2 sentence insight about the trend — do not list individual data points."
+    : "Based on the data above, provide a concise, human-readable insight that directly answers my question. Keep it to 1–3 sentences.";
+
   const summaryMessages: Message[] = [
     { role: "system", content: systemPrompt },
     { role: "user", content: question },
     { role: "assistant", content: `I queried BigQuery and got:\n\n${rawTable}` },
-    { role: "user", content: "Based on the data above, provide a concise, human-readable insight that directly answers my question. Keep it to 1-3 sentences." }
+    { role: "user", content: summaryInstruction }
   ];
 
   const summary = await callLLMForSummary(llmConfig, summaryMessages);
-  return { summary: summary || rawTable };
+  return { summary: summary || rawTable, visual };
 }

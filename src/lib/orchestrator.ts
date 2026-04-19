@@ -128,12 +128,25 @@ export async function handleQuestion(session: SessionState, question: string, co
   if (activeIntegration.provider === "bigquery") {
     const fields = activeIntegration.providerFields as BigQueryFields;
     const projectId = fields?.projectId;
+    // Derive datasetId from propertyId if not explicitly stored (backfill for existing integrations)
+    const datasetId = fields?.datasetId ||
+      (fields?.propertyId ? `analytics_${fields.propertyId.replace(/^properties\//, "")}` : undefined);
     const propertyName = fields?.propertyName || fields?.propertyId || "GA4 Export";
 
     if (!projectId) {
       pushAssistantMessage(
         session,
         "BigQuery project ID is not configured. Go to Settings > Integrations > BigQuery to set it up.",
+        "bigquery",
+        "error"
+      );
+      return session;
+    }
+
+    if (!datasetId) {
+      pushAssistantMessage(
+        session,
+        "BigQuery dataset is not configured. Select a GA4 property in Settings > Integrations > BigQuery.",
         "bigquery",
         "error"
       );
@@ -154,14 +167,15 @@ export async function handleQuestion(session: SessionState, question: string, co
     }
 
     try {
-      const { summary } = await runBigQueryAgentTurn(llmConfig, bqAccessToken, projectId, propertyName, question);
+      const { summary, visual } = await runBigQueryAgentTurn(llmConfig, bqAccessToken, projectId, datasetId, propertyName, question);
       session.chat.push({
         id: randomUUID(),
         role: "assistant",
         content: summary,
         createdAt: new Date().toISOString(),
         source: "bigquery",
-        status: "complete"
+        status: "complete",
+        ...(visual ? { visual } : {})
       });
     } catch (error) {
       console.error("BigQuery query failed", {

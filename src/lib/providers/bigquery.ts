@@ -75,11 +75,16 @@ export async function testConnection(
   providerFields: ProviderFields,
   integrationId?: string
 ): Promise<TestResult> {
-  const fields = providerFields as { projectId?: string };
+  const fields = providerFields as { projectId?: string; datasetId?: string };
   const projectId = fields.projectId;
+  const datasetId = fields.datasetId;
 
   if (!projectId) {
     return { success: false, error: "GCP Project ID is required for BigQuery" };
+  }
+
+  if (!datasetId) {
+    return { success: false, error: "Dataset ID is not configured. Select a GA4 property in Settings > Integrations > BigQuery." };
   }
 
   // Resolve access token — prefer stored token for oauth2-code-flow
@@ -99,7 +104,7 @@ export async function testConnection(
 
   try {
     const response = await fetch(
-      `https://bigquery.googleapis.com/bigquery/v2/projects/${projectId}/datasets/ga4analytics`,
+      `https://bigquery.googleapis.com/bigquery/v2/projects/${projectId}/datasets/${datasetId}`,
       { headers: { Authorization: `Bearer ${accessToken}` } }
     );
 

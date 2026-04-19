@@ -197,9 +197,16 @@ function BigQueryFields({
         {errors.clientSecret ? <span className="field-error">{errors.clientSecret}</span> : null}
       </label>
 
-      <p className="form-hint">
-        Dataset is hardcoded to <code>ga4analytics</code>. After saving, click &ldquo;Connect with Google&rdquo; to authenticate and select your GA4 property.
-      </p>
+      <label className="form-field">
+        <span>Dataset ID</span>
+        <input
+          onChange={(e) => onChange("datasetId", e.target.value)}
+          placeholder={values.datasetId ? values.datasetId : "Auto-set when you select a GA4 property"}
+          type="text"
+          value={values.datasetId ?? ""}
+        />
+        <span className="form-hint">Derived automatically from your GA4 property selection (e.g. analytics_516611632). Override only if your export uses a custom dataset name.</span>
+      </label>
     </>
   );
 }
@@ -250,7 +257,8 @@ function buildProviderFields(provider: IntegrationProvider, values: Record<strin
     return {
       projectId: values.projectId ?? "",
       propertyId: values.propertyId ?? "",
-      propertyName: values.propertyName ?? ""
+      propertyName: values.propertyName ?? "",
+      datasetId: values.datasetId ?? ""
     };
   }
   return {};
