@@ -41,7 +41,12 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
         {message.source ? <span>Tool:{message.source}</span> : null}
         <span>{formatTime(message.createdAt)}</span>
       </div>
-      <div className="message-bubble__content">{message.content}</div>
+      <div className="message-bubble__content">
+        {message.content}
+        {message.status === "streaming" && (
+          <span className="streaming-cursor" aria-hidden="true" />
+        )}
+      </div>
       {message.visual?.type === "chart" && message.visual.data.points.length > 0 && (
         <MetricLineChart data={message.visual.data} />
       )}

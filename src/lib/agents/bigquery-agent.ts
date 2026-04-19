@@ -7,8 +7,9 @@
 // datasets. Migrate to the BigQuery Jobs API (POST /projects/{id}/jobs) when queries
 // exceed this limit. See README for details.
 
-import { extractChartData, extractTableData } from "@/lib/agents/ga4-agent";
-import type { VisualData } from "@/lib/types";
+import { callLLMForSummaryStream, extractChartData, extractTableData } from "@/lib/agents/ga4-agent";
+import type { StreamWriterFn, VisualData } from "@/lib/types";
+import { writeSseEvent } from "@/lib/utils";
 import type { LLMProvider } from "@/types/llm";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -406,7 +407,8 @@ export async function runBigQueryAgentTurn(
   projectId: string,
   datasetId: string,
   propertyName: string,
-  question: string
+  question: string,
+  writer?: StreamWriterFn
 ): Promise<BigQueryAgentTurnResult> {
   const schema = buildRunBqQuerySchema(projectId, datasetId);
   const systemPrompt = buildSystemPrompt(projectId, datasetId, propertyName);
@@ -424,6 +426,7 @@ export async function runBigQueryAgentTurn(
   }
 
   // Step 2: Execute the SQL
+  if (writer) writeSseEvent(writer, { type: "progress", step: "querying" });
   const { sql } = result.toolCall.arguments as { sql: string };
   const { columns, rows } = await executeBigQueryQuery(accessToken, projectId, sql);
   const rawTable = formatRowsAsText(columns, rows);
@@ -452,6 +455,9 @@ export async function runBigQueryAgentTurn(
     { role: "user", content: summaryInstruction }
   ];
 
-  const summary = await callLLMForSummary(llmConfig, summaryMessages);
+  if (writer) writeSseEvent(writer, { type: "progress", step: "summarizing" });
+  const summary = writer
+    ? await callLLMForSummaryStream(llmConfig, summaryMessages, writer)
+    : await callLLMForSummary(llmConfig, summaryMessages);
   return { summary: summary || rawTable, visual };
 }

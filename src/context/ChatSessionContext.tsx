@@ -10,7 +10,7 @@ import {
 } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
-import type { ChatMessage, ChatSession, ChatSummary } from "@/lib/types";
+import type { ChatMessage, ChatSession, ChatSummary, SseProgressStep } from "@/lib/types";
 
 type ChatWorkspaceMode = "home" | "session";
 
@@ -21,6 +21,7 @@ interface ChatSessionContextValue {
   isTyping: boolean;
   isGenerating: boolean;
   isSessionLoading: boolean;
+  streamingStep: SseProgressStep | null;
   homeDraftVersion: number;
   workspaceMode: ChatWorkspaceMode;
   openChat: (id: string) => Promise<void>;
@@ -128,6 +129,8 @@ export function ChatSessionProvider({
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [activeSession, setActiveSession] = useState<ChatSession | null>(null);
   const [isTyping, setIsTyping] = useState(false);
+  const [streamingStep, setStreamingStep] = useState<SseProgressStep | null>(null);
+  const streamingMsgIdRef = useRef<string | null>(null);
   const [isSessionLoading, setIsSessionLoading] = useState(() => {
     if (mode !== "session" || !initialChatId) return false;
     if (typeof window !== "undefined" && readPendingChatStart(initialChatId)) return false;
@@ -193,47 +196,124 @@ export function ChatSessionProvider({
       });
     }
     setIsTyping(true);
+    setStreamingStep(null);
+
+    // Add an empty streaming assistant message immediately
+    const streamingMsgId = `streaming-${Date.now()}`;
+    streamingMsgIdRef.current = streamingMsgId;
+    const streamingMsg: ChatMessage = {
+      id: streamingMsgId,
+      role: "assistant",
+      content: "",
+      createdAt: new Date().toISOString(),
+      status: "streaming"
+    };
+    setActiveSession((prev) => {
+      const session = prev ?? baseSession;
+      return session ? { ...session, messages: [...session.messages, streamingMsg] } : prev;
+    });
+
+    let receivedDone = false;
 
     try {
-      const updated = await readJson<ChatSession>(
-        `/api/chats/${id}/messages`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ question }),
-          signal: controller.signal
+      const response = await fetch(`/api/chats/${id}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question }),
+        signal: controller.signal
+      });
+
+      if (!response.ok || !response.body) {
+        throw new Error(await response.text());
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const raw = line.slice(6).trim();
+          if (!raw) continue;
+
+          let event: { type: string; [k: string]: unknown };
+          try { event = JSON.parse(raw) as typeof event; } catch { continue; }
+
+          if (event.type === "progress") {
+            setStreamingStep(event.step as SseProgressStep);
+          } else if (event.type === "text") {
+            const delta = event.delta as string;
+            setStreamingStep(null);
+            setActiveSession((prev) => {
+              if (!prev) return prev;
+              return {
+                ...prev,
+                messages: prev.messages.map((m) =>
+                  m.id === streamingMsgId
+                    ? { ...m, content: m.content + delta }
+                    : m
+                )
+              };
+            });
+          } else if (event.type === "done") {
+            receivedDone = true;
+            const updated = event.session as ChatSession;
+            setActiveChatId(id);
+            setActiveSession(updated);
+            setChats((prev) =>
+              sortChats(
+                prev.map((chat) =>
+                  chat.id === id
+                    ? { ...chat, title: updated.title, updatedAt: updated.updatedAt, messageCount: updated.messages.length }
+                    : chat
+                )
+              )
+            );
+          } else if (event.type === "error") {
+            const msg = event.message as string;
+            setActiveSession((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    messages: prev.messages.map((m) =>
+                      m.id === streamingMsgId ? { ...m, content: msg, status: "error" } : m
+                    )
+                  }
+                : prev
+            );
+            receivedDone = true;
+          }
         }
-      );
-      setActiveChatId(id);
-      setActiveSession(updated);
-      setChats((prev) =>
-        sortChats(
-          prev.map((chat) =>
-            chat.id === id
-              ? {
-                  ...chat,
-                  title: updated.title,
-                  updatedAt: updated.updatedAt,
-                  messageCount: updated.messages.length
-                }
-              : chat
-          )
-        )
-      );
+      }
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") return;
-      const errorMsg: ChatMessage = {
-        id: `error-${Date.now()}`,
-        role: "assistant",
-        content: err instanceof Error ? err.message : "An unexpected error occurred.",
-        createdAt: new Date().toISOString(),
-        status: "error"
-      };
-      setActiveSession((prev) =>
-        prev ? { ...prev, messages: [...prev.messages, errorMsg] } : prev
-      );
     } finally {
+      if (!receivedDone) {
+        // Stream closed without a done event — mark the message as error
+        setActiveSession((prev) =>
+          prev
+            ? {
+                ...prev,
+                messages: prev.messages.map((m) =>
+                  m.id === streamingMsgId && m.status === "streaming"
+                    ? { ...m, status: "error", content: m.content || "Response was interrupted." }
+                    : m
+                )
+              }
+            : prev
+        );
+      }
       setIsTyping(false);
+      setStreamingStep(null);
+      streamingMsgIdRef.current = null;
       abortControllerRef.current = null;
     }
   }, []);
@@ -362,6 +442,7 @@ export function ChatSessionProvider({
         isTyping,
         isGenerating: isTyping,
         isSessionLoading,
+        streamingStep,
         homeDraftVersion,
         workspaceMode: mode,
         openChat,

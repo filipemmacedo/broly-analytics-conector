@@ -90,6 +90,7 @@ export function Dashboard() {
     activeSession,
     isTyping,
     isGenerating,
+    streamingStep,
     sendMessage,
     abortMessage,
     isSessionLoading,
@@ -106,6 +107,8 @@ export function Dashboard() {
   const previousMessageCountRef = useRef(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const composerInnerRef = useRef<HTMLFormElement>(null);
+
+  const messages = activeSession?.messages ?? [];
 
   useEffect(() => {
     setHasHydrated(true);
@@ -130,6 +133,8 @@ export function Dashboard() {
 
   // Re-scroll when a chart or table loads in (dynamic imports expand the layout
   // after the initial message-count scroll has already fired).
+  // Re-registers whenever messages.length changes so the observer is alive
+  // the first time the chat list renders (home page starts with no messages).
   useEffect(() => {
     const el = chatListRef.current;
     if (!el) return;
@@ -144,7 +149,7 @@ export function Dashboard() {
 
     observer.observe(el);
     return () => observer.disconnect();
-  }, []);
+  }, [messages.length]);
 
   useEffect(() => {
     if (!textareaRef.current) return;
@@ -197,7 +202,6 @@ export function Dashboard() {
     }
   }
 
-  const messages = activeSession?.messages ?? [];
   const chatTitle = activeSession?.title?.trim()
     || (isSessionLoading ? "Loading chat" : workspaceMode === "home" ? "Dashboard" : "New chat");
   const submitUnavailable = isTyping || isSessionLoading || !question.trim();
@@ -304,10 +308,14 @@ export function Dashboard() {
               }} />
             ) : (
               <div className="editorial-chat-list" ref={chatListRef}>
-                {messages.map((message) => (
-                  <MessageBubble key={message.id} message={message} />
-                ))}
-                {isTyping && <TypingIndicator />}
+                {messages
+                  .filter((m) => !(m.status === "streaming" && !m.content))
+                  .map((message) => (
+                    <MessageBubble key={message.id} message={message} />
+                  ))}
+                {isTyping && !messages.some((m) => m.status === "streaming" && m.content.length > 0) && (
+                  <TypingIndicator step={streamingStep} />
+                )}
                 <div ref={bottomRef} />
               </div>
             )}

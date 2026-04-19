@@ -16,7 +16,10 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: "Broly Analytics Agent",
-  description: "A Next.js POC for connecting Google Analytics 4 to a chat-first analytics experience."
+  description: "A Next.js POC for connecting Google Analytics 4 to a chat-first analytics experience.",
+  icons: {
+    icon: "/broly.png"
+  }
 };
 
 export default function RootLayout({

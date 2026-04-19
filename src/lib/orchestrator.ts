@@ -7,11 +7,13 @@ import { runGA4AgentTurn } from "@/lib/agents/ga4-agent";
 import { getFreshAccessToken as getBQFreshToken } from "@/lib/providers/bigquery";
 import { getFreshAccessToken as getGA4FreshToken } from "@/lib/providers/google-analytics";
 import type { ApiKeyAuthConfig, BigQueryFields, GoogleAnalyticsFields, SnowflakeFields } from "@/types/integration";
-import type { ChatMessage, SessionState, SourceId } from "@/lib/types";
+import type { ChatMessage, SessionState, SourceId, StreamWriterFn } from "@/lib/types";
+import { writeSseEvent } from "@/lib/utils";
 import type { LLMProvider } from "@/types/llm";
 
 export interface ChatContext {
   llmConfig?: { provider: LLMProvider; model: string; apiKey: string } | null;
+  writer?: StreamWriterFn;
 }
 
 function pushAssistantMessage(
@@ -31,7 +33,7 @@ function pushAssistantMessage(
 }
 
 export async function handleQuestion(session: SessionState, question: string, context?: ChatContext) {
-  const { llmConfig } = context ?? {};
+  const { llmConfig, writer } = context ?? {};
 
   const userMessage: ChatMessage = {
     id: randomUUID(),
@@ -96,7 +98,8 @@ export async function handleQuestion(session: SessionState, question: string, co
     }
 
     try {
-      const { summary, visual } = await runGA4AgentTurn(llmConfig, accessToken, propertyId, question);
+      if (writer) writeSseEvent(writer, { type: "progress", step: "planning" });
+      const { summary, visual } = await runGA4AgentTurn(llmConfig, accessToken, propertyId, question, writer);
       const message: ChatMessage = {
         id: randomUUID(),
         role: "assistant",
@@ -168,7 +171,8 @@ export async function handleQuestion(session: SessionState, question: string, co
     }
 
     try {
-      const { summary, visual } = await runBigQueryAgentTurn(llmConfig, bqAccessToken, projectId, datasetId, propertyName, question);
+      if (writer) writeSseEvent(writer, { type: "progress", step: "planning" });
+      const { summary, visual } = await runBigQueryAgentTurn(llmConfig, bqAccessToken, projectId, datasetId, propertyName, question, writer);
       session.chat.push({
         id: randomUUID(),
         role: "assistant",
@@ -235,13 +239,15 @@ export async function handleQuestion(session: SessionState, question: string, co
     }
 
     try {
+      if (writer) writeSseEvent(writer, { type: "progress", step: "planning" });
       const { summary, visual } = await runSnowflakeAgentTurn(
         llmConfig,
         token,
         accountId,
         database,
         warehouse,
-        question
+        question,
+        writer
       );
       session.chat.push({
         id: randomUUID(),
