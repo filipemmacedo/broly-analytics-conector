@@ -1,5 +1,5 @@
 export type SourceId = "bigquery" | "powerbi" | "ga4" | "snowflake";
-export type ConnectionStatus = "disconnected" | "connected" | "error";
+export type ConnectionStatus = "disconnected" | "connected" | "error" | "demo";
 
 export interface ColumnMetadata {
   name: string;
@@ -77,7 +77,7 @@ export interface PowerBISelection {
 
 export interface BigQueryConnection {
   status: ConnectionStatus;
-  mode: "live" | null;
+  mode: "live" | "demo" | null;
   selected: BigQuerySelection;
   metadata: BigQueryMetadata;
   access?: EncryptedTokenSet;
@@ -89,7 +89,7 @@ export interface BigQueryConnection {
 
 export interface PowerBIConnection {
   status: ConnectionStatus;
-  mode: "live" | null;
+  mode: "live" | "demo" | null;
   selected: PowerBISelection;
   metadata: PowerBIMetadata;
   access?: EncryptedTokenSet;
