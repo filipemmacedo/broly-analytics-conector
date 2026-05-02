@@ -3,7 +3,7 @@
 // Supports Anthropic, OpenAI, Google Gemini, and Mistral via raw fetch (no SDKs).
 
 import { formatMetadataForPrompt, getGA4Metadata, runGA4Report } from "@/lib/connectors/ga4";
-import type { ChartData, StreamWriterFn, TableData, VisualData } from "@/lib/types";
+import type { ChatMessage, ChartData, StreamWriterFn, TableData, VisualData } from "@/lib/types";
 import { writeSseEvent } from "@/lib/utils";
 import type { LLMProvider } from "@/types/llm";
 
@@ -848,6 +848,12 @@ function supplementMetrics(
   return extra.length > 0 ? [...llmMetrics, ...extra] : llmMetrics;
 }
 
+function toAgentMessages(history: ChatMessage[]): Message[] {
+  return history
+    .filter((m) => m.role === "user" || m.role === "assistant")
+    .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+}
+
 export interface GA4AgentTurnResult {
   summary: string;
   visual?: VisualData;
@@ -858,15 +864,19 @@ export async function runGA4AgentTurn(
   ga4AccessToken: string,
   propertyId: string,
   question: string,
-  writer?: StreamWriterFn
+  writer?: StreamWriterFn,
+  history?: ChatMessage[]
 ): Promise<GA4AgentTurnResult> {
   const metadata = await getGA4Metadata(ga4AccessToken, propertyId);
   const metadataBlock = formatMetadataForPrompt(metadata);
   const systemPrompt = buildSystemPrompt(metadataBlock);
 
+  const historyMessages = history ? toAgentMessages(history) : [];
+
   // Step 1: Send question to LLM with GA4 tool definition
   const messages: Message[] = [
     { role: "system", content: systemPrompt },
+    ...historyMessages,
     { role: "user", content: question }
   ];
 
@@ -931,6 +941,7 @@ export async function runGA4AgentTurn(
 
   const summaryMessages: Message[] = [
     { role: "system", content: systemPrompt },
+    ...historyMessages,
     { role: "user", content: question },
     {
       role: "assistant",

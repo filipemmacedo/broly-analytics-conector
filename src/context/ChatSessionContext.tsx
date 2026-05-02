@@ -268,6 +268,8 @@ export function ChatSessionProvider({
             const updated = event.session as ChatSession;
             setActiveChatId(id);
             setActiveSession(updated);
+            setIsTyping(false);
+            setStreamingStep(null);
             setChats((prev) =>
               sortChats(
                 prev.map((chat) =>
@@ -319,12 +321,17 @@ export function ChatSessionProvider({
   }, []);
 
   useEffect(() => {
+    let alive = true;
+
     async function init() {
       try {
         await refreshChats();
       } catch {
+        if (!alive) return;
         setChats([]);
       }
+
+      if (!alive) return;
 
       if (mode === "session" && initialChatId) {
         const pendingStart = readPendingChatStart(initialChatId);
@@ -342,6 +349,9 @@ export function ChatSessionProvider({
           initialChatId,
           pendingStart ? { syncState: false } : undefined
         ).catch(() => null);
+
+        if (!alive) return;
+
         if (!session) {
           clearPendingChatStart();
           setIsTyping(false);
@@ -370,6 +380,8 @@ export function ChatSessionProvider({
     }
 
     void init();
+
+    return () => { alive = false; };
   }, [initialChatId, loadSession, mode, refreshChats, router, sendQuestionToSession]);
 
   const openChat = useCallback(async (id: string) => {
