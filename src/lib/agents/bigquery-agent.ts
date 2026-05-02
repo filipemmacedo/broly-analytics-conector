@@ -8,7 +8,7 @@
 // exceed this limit. See README for details.
 
 import { callLLMForSummaryStream, extractChartData, extractTableData } from "@/lib/agents/ga4-agent";
-import type { StreamWriterFn, VisualData } from "@/lib/types";
+import type { ChatMessage, StreamWriterFn, VisualData } from "@/lib/types";
 import { writeSseEvent } from "@/lib/utils";
 import type { LLMProvider } from "@/types/llm";
 
@@ -401,6 +401,12 @@ export interface BigQueryAgentTurnResult {
   visual?: VisualData;
 }
 
+function toAgentMessages(history: ChatMessage[]): Message[] {
+  return history
+    .filter((m) => m.role === "user" || m.role === "assistant")
+    .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+}
+
 export async function runBigQueryAgentTurn(
   llmConfig: LLMConfig,
   accessToken: string,
@@ -408,13 +414,17 @@ export async function runBigQueryAgentTurn(
   datasetId: string,
   propertyName: string,
   question: string,
-  writer?: StreamWriterFn
+  writer?: StreamWriterFn,
+  history?: ChatMessage[]
 ): Promise<BigQueryAgentTurnResult> {
   const schema = buildRunBqQuerySchema(projectId, datasetId);
   const systemPrompt = buildSystemPrompt(projectId, datasetId, propertyName);
 
+  const historyMessages = history ? toAgentMessages(history) : [];
+
   const messages: Message[] = [
     { role: "system", content: systemPrompt },
+    ...historyMessages,
     { role: "user", content: question }
   ];
 
@@ -450,6 +460,7 @@ export async function runBigQueryAgentTurn(
 
   const summaryMessages: Message[] = [
     { role: "system", content: systemPrompt },
+    ...historyMessages,
     { role: "user", content: question },
     { role: "assistant", content: `I queried BigQuery and got:\n\n${rawTable}` },
     { role: "user", content: summaryInstruction }

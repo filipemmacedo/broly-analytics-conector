@@ -7,7 +7,7 @@
 // the upgrade path is async polling via GET /api/v2/statements/<handle>.
 
 import { callLLMForSummaryStream, extractChartData, extractTableData } from "@/lib/agents/ga4-agent";
-import type { StreamWriterFn, VisualData } from "@/lib/types";
+import type { ChatMessage, StreamWriterFn, VisualData } from "@/lib/types";
 import { writeSseEvent } from "@/lib/utils";
 import type { LLMProvider } from "@/types/llm";
 
@@ -647,6 +647,12 @@ export interface SnowflakeAgentTurnResult {
   visual?: VisualData;
 }
 
+function toAgentMessages(history: ChatMessage[]): Message[] {
+  return history
+    .filter((m) => m.role === "user" || m.role === "assistant")
+    .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+}
+
 export async function runSnowflakeAgentTurn(
   llmConfig: LLMConfig,
   token: string,
@@ -654,7 +660,8 @@ export async function runSnowflakeAgentTurn(
   database: string,
   warehouse: string,
   question: string,
-  writer?: StreamWriterFn
+  writer?: StreamWriterFn,
+  history?: ChatMessage[]
 ): Promise<SnowflakeAgentTurnResult> {
   const querySchema = buildRunSnowflakeQuerySchema(database);
 
@@ -663,8 +670,11 @@ export async function runSnowflakeAgentTurn(
 
   const systemPrompt = buildSystemPrompt(accountId, database, warehouse, schemaMetadata);
 
+  const historyMessages = history ? toAgentMessages(history) : [];
+
   const messages: Message[] = [
     { role: "system", content: systemPrompt },
+    ...historyMessages,
     { role: "user", content: question }
   ];
 
@@ -748,6 +758,7 @@ export async function runSnowflakeAgentTurn(
 
   const summaryMessages: Message[] = [
     { role: "system", content: systemPrompt },
+    ...historyMessages,
     { role: "user", content: question },
     { role: "assistant", content: `I queried Snowflake and got:\n\n${rawTable}` },
     { role: "user", content: summaryInstruction }

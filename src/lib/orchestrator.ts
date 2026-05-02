@@ -16,6 +16,14 @@ export interface ChatContext {
   writer?: StreamWriterFn;
 }
 
+const HISTORY_WINDOW = 3;
+
+function sliceHistory(messages: ChatMessage[]): ChatMessage[] {
+  return messages
+    .filter((m) => m.status === "complete")
+    .slice(-(HISTORY_WINDOW * 2));
+}
+
 function pushAssistantMessage(
   session: SessionState,
   content: string,
@@ -42,6 +50,7 @@ export async function handleQuestion(session: SessionState, question: string, co
     createdAt: new Date().toISOString(),
     status: "complete"
   };
+  const history = sliceHistory(session.chat);
   session.chat.push(userMessage);
 
   // ─── Resolve active source ────────────────────────────────────────────────
@@ -99,7 +108,7 @@ export async function handleQuestion(session: SessionState, question: string, co
 
     try {
       if (writer) writeSseEvent(writer, { type: "progress", step: "planning" });
-      const { summary, visual } = await runGA4AgentTurn(llmConfig, accessToken, propertyId, question, writer);
+      const { summary, visual } = await runGA4AgentTurn(llmConfig, accessToken, propertyId, question, writer, history);
       const message: ChatMessage = {
         id: randomUUID(),
         role: "assistant",
@@ -172,7 +181,7 @@ export async function handleQuestion(session: SessionState, question: string, co
 
     try {
       if (writer) writeSseEvent(writer, { type: "progress", step: "planning" });
-      const { summary, visual } = await runBigQueryAgentTurn(llmConfig, bqAccessToken, projectId, datasetId, propertyName, question, writer);
+      const { summary, visual } = await runBigQueryAgentTurn(llmConfig, bqAccessToken, projectId, datasetId, propertyName, question, writer, history);
       session.chat.push({
         id: randomUUID(),
         role: "assistant",
@@ -247,7 +256,8 @@ export async function handleQuestion(session: SessionState, question: string, co
         database,
         warehouse,
         question,
-        writer
+        writer,
+        history
       );
       session.chat.push({
         id: randomUUID(),
